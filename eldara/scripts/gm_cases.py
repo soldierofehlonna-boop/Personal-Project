@@ -41,13 +41,18 @@ Usage:
     python3 scripts/gm_cases.py --json
 """
 import argparse
+import hashlib
 import json
+import re
 import sys
 import textwrap
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CASES_PATH = ROOT / "docs" / "gm_cases.json"
+# Short enough to read in a diff, long enough that collisions are not a
+# practical concern across a few dozen sections.
+DIGEST_LEN = 12
 CURRENT_PATH = ROOT / "saves" / "current.json"
 INSTRUCTIONS_PATH = ROOT / "prompts" / "GM_INSTRUCTIONS.md"
 SCHEMA_PATH = ROOT / "state_schema.json"
@@ -288,6 +293,66 @@ def instruction_headings():
     return headings
 
 
+def instruction_sections():
+    """Each heading in GM_INSTRUCTIONS.md mapped to a digest of its body.
+
+    A heading pointer catches restructuring. It cannot catch the prose
+    under a heading being rewritten while the heading stays put -- which
+    is the more common edit, and which leaves a case still pointing
+    somewhere real while describing a procedure that has changed.
+    Digesting the body closes that gap.
+
+    Whitespace is collapsed before hashing, so rewrapping a paragraph is
+    not drift but any changed word is. A heading appearing more than once
+    has all of its bodies digested together.
+    """
+    if not INSTRUCTIONS_PATH.exists():
+        return None
+    bodies, current, buf = {}, None, []
+    for line in INSTRUCTIONS_PATH.read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith("#"):
+            if current is not None:
+                bodies.setdefault(current, []).append("\n".join(buf))
+            current, buf = line.strip().lstrip("#").strip(), []
+        elif current is not None:
+            buf.append(line)
+    if current is not None:
+        bodies.setdefault(current, []).append("\n".join(buf))
+    return {
+        heading: hashlib.sha256(
+            re.sub(r"\s+", " ", " ".join(parts)).strip().encode("utf-8")
+        ).hexdigest()[:DIGEST_LEN]
+        for heading, parts in bodies.items()
+    }
+
+
+def cmd_refresh_digests(cases):
+    """Re-record every case's source_digest against the current prose.
+
+    Run after reading the drifted cases --check-sources named and
+    confirming each still describes what its section says. Deliberately a
+    separate, explicit command: refreshing automatically would make the
+    check self-silencing, which is the failure mode it exists to prevent.
+    """
+    digests = instruction_sections()
+    if digests is None:
+        print(f"MISSING: {INSTRUCTIONS_PATH.relative_to(ROOT)} -- cannot refresh.")
+        return 1
+    data = json.loads(CASES_PATH.read_text(encoding="utf-8"))
+    changed = 0
+    for case in data["cases"]:
+        new = digests.get(case["source"])
+        if new is None:
+            print(f"  skipped {case['id']}: source heading not found")
+            continue
+        if case.get("source_digest") != new:
+            case["source_digest"] = new
+            changed += 1
+    CASES_PATH.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    print(f"Recorded {changed} digest(s); {len(data['cases'])} cases total.")
+    return 0
+
+
 def cmd_check_sources(cases):
     """Fails if any case points at a heading that no longer exists, or
     names a live_check this script doesn't implement. This is the whole
@@ -325,6 +390,37 @@ def cmd_check_sources(cases):
             print(f"  {name}")
         print()
 
+    # Content drift is reported but does NOT fail this check, and that is
+    # a deliberate split rather than leniency. A vanished heading is
+    # unambiguous: the pointer is broken. A rewritten body is a question --
+    # the first run of this found two drifted sections and only one left
+    # its case actually wrong; the other case never quoted the sentence
+    # that changed. Failing on every prose edit would turn
+    # `session.py audit` red for documentation work, and an audit people
+    # learn to ignore protects nothing. So: named loudly, every run,
+    # without blocking.
+    digests = instruction_sections()
+    if digests is not None:
+        drifted = [(c["id"], c["source"], c["source_digest"], digests[c["source"]])
+                   for c in cases
+                   if c.get("source_digest") and c["source"] in digests
+                   and c["source_digest"] != digests[c["source"]]]
+        unrecorded = [c["id"] for c in cases if not c.get("source_digest")]
+        if drifted:
+            print("Cases whose source section has been REWRITTEN since extraction")
+            print("(heading still exists -- read each case against its section):")
+            for case_id, source, was, now in drifted:
+                print(f"  {case_id}: \"{source}\"  {was} -> {now}")
+            print("\n  Once each still reads true, re-record with "
+                  "`gm_cases.py --refresh-digests`.\n")
+        if unrecorded:
+            print(f"{len(unrecorded)} case(s) carry no source_digest, so content "
+                  "drift cannot be detected for them:")
+            print("  " + ", ".join(unrecorded))
+            print("\n  Run `gm_cases.py --refresh-digests` to start tracking them.\n")
+        if not drifted and not unrecorded:
+            print("Every case's source section is unchanged since extraction.\n")
+
     # Informational only: a heading with no case under it is usually fine
     # (the Design Pillars and Prose Craft sections are guidance for how to
     # write, not discrete triggers), but a NEW one showing up here is a
@@ -354,6 +450,10 @@ def main():
     parser.add_argument("query", nargs="*", default=None,
                          help="Only show cases matching this text "
                               "(id, trigger, action, or source).")
+    parser.add_argument("--refresh-digests", action="store_true",
+                         help="Re-record each case's source_digest against the current "
+                              "GM_INSTRUCTIONS.md, after confirming the cases still read "
+                              "true. Run when --check-sources reports drift.")
     parser.add_argument("--list-gm-cases", action="store_true",
                          help="List every case -- the default behavior, "
                               "spelled out.")
@@ -375,6 +475,9 @@ def main():
     args = parser.parse_args()
 
     cases = load_cases()
+
+    if args.refresh_digests:
+        sys.exit(cmd_refresh_digests(cases))
 
     if args.check_sources:
         sys.exit(cmd_check_sources(cases))
