@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "turn": 7,
+  "turn": 8,
   "in_world_date": {
     "day": 1,
     "month": "Seedmonth",
@@ -9,7 +9,9 @@
   "status": [
     "twisted ankle, favors it going down stairs"
   ],
-  "magic": [],
+  "magic": [
+    "lingering warmth from a healer's working on his ankle, fading over the next few days"
+  ],
   "gear": [
     {
       "name": "T-shirt",
@@ -78,5 +80,5 @@
       "note": "The inn Maren runs"
     }
   ],
-  "commit_token": "7-46dd9c"
+  "commit_token": "8-c50c31"
 }

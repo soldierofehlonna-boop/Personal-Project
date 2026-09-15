@@ -86,3 +86,14 @@ Self-critique: ran clean (self_critique.py passed)
 - entities: null -> [{"name": "The Hollow Bell", "type": "location", "note": "The inn Maren runs"}]
 - turn: 6 -> 7
 
+
+### Turn 8 — 2026-09-15 22:41 UTC
+
+_Turn 8: magic effect (healer's working)_
+
+Self-critique: ran clean (self_critique.py passed)
+
+- commit_token: "7-46dd9c" -> "8-c50c31"
+- magic: [] -> ["lingering warmth from a healer's working on his ankle, fading over the next few days"]
+- turn: 7 -> 8
+
