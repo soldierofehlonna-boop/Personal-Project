@@ -213,7 +213,7 @@ function render(state, locations, npcRegistry) {
   var currencyParts = [];
   ['platinum', 'gold', 'silver', 'copper'].forEach(function (denom) {
     var v = currency[denom];
-    if (v) currencyParts.push(v + ' ' + denom);
+    if (v) currencyParts.push(esc(v) + ' ' + denom);
   });
   var currencyStr = currencyParts.length ? currencyParts.join(' &middot; ') : 'none';
 
