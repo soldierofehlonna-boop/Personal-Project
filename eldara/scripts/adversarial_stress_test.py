@@ -47,10 +47,13 @@ to run this half:
    day to day) rather than a stand-in for it.
 2. AUTOMATIC (--auto-gm, needs ANTHROPIC_API_KEY): this script calls the
    real Anthropic Messages API itself, at the named model/effort pairs,
-   with GM_INSTRUCTIONS.md as system context, and feeds what comes back
-   straight into the pipeline -- true run/save/feed/compare with zero
-   manual steps. This is a genuinely different thing being tested,
-   though: a bare API call at a given effort level, not the specific
+   with GM_INSTRUCTIONS.md plus the live save state as system context
+   (see build_campaign_context() -- a bare API call has no tools, so the
+   files a live GM reads off disk are handed to it inline), and feeds
+   what comes back straight into the pipeline -- true
+   run/save/feed/compare with zero manual steps. This is a genuinely
+   different thing being tested, though: a bare API call at a given
+   effort level with the save state pasted in, not the specific
    client (iOS app, Claude Code CLI) you actually play through, which
    may set its own defaults on top of what you request. Anthropic
    bills this key directly per token, separately from any Pro/Max
@@ -100,6 +103,12 @@ Only ever run this against a throwaway/test campaign -- same rule as
 earn_clean_slate.py, enforced the same way (refuses past turn 0), since
 this permanently writes commits and backups for every case that isn't
 caught.
+
+Every mode restores saves/current.json, saves/npc_registry.json and
+saves/journal.md to the turn-0 baseline between cases and between labels,
+so no case is drafted against a previous case's commit and a second
+label doesn't hit the turn-0 refusal. Backups under saves/backups/ are
+deliberately left in place as the record of what actually ran.
 """
 import argparse
 import copy
@@ -116,8 +125,20 @@ SCRIPTS = ROOT / "scripts"
 CURRENT_PATH = ROOT / "saves" / "current.json"
 REPORTS_DIR = ROOT / "saves" / "exports"
 GM_INSTRUCTIONS_PATH = ROOT / "prompts" / "GM_INSTRUCTIONS.md"
+NPC_REGISTRY_PATH = ROOT / "saves" / "npc_registry.json"
+JOURNAL_PATH = ROOT / "saves" / "journal.md"
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
+# Save files a committed case can modify. Snapshotted before a run and
+# restored between cases and labels -- see restore_campaign().
+CAMPAIGN_FILES = (CURRENT_PATH, NPC_REGISTRY_PATH, JOURNAL_PATH)
+JOURNAL_TAIL_LINES = 40
+
+# The month enum is imported rather than restated: a second copy here
+# would be one more place for the calendar to drift out of agreement
+# with the validator that actually rejects a bad month.
+sys.path.insert(0, str(SCRIPTS))
+from validate_state import MONTH_ORDER, MONTH_LENGTHS  # noqa: E402
 
 
 def load_current():
@@ -141,6 +162,96 @@ def run(args, input_text=None):
 # changed the scripts themselves. Included here mainly as a baseline sanity
 # check before trusting the GM-facing half of this test.
 # ---------------------------------------------------------------------------
+
+def snapshot_campaign():
+    """Capture the save files a committed case can modify, so the next
+    case or label starts from the same baseline this one did."""
+    return {
+        path: (path.read_text(encoding="utf-8") if path.exists() else None)
+        for path in CAMPAIGN_FILES
+    }
+
+
+def restore_campaign(snapshot):
+    """Put the save files back exactly as snapshot_campaign() found them.
+
+    Without this, a case that commits leaves saves/current.json past turn
+    0, which has two consequences: the next label's tooling pass refuses
+    outright (turn != 0) so a two-label --run-all-auto never reaches its
+    comparison, and every later case is drafted against the previous
+    case's commit rather than a common baseline -- making the two
+    settings being compared no longer comparable.
+
+    Backups under saves/backups/ are deliberately left alone: they are
+    the record of what this run actually did.
+    """
+    for path, text in snapshot.items():
+        if text is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(text, encoding="utf-8")
+
+
+def build_campaign_context():
+    """The save state a live GM session reads off disk before drafting.
+
+    GM_INSTRUCTIONS.md is written for a GM that can read files and run
+    scripts -- it refers to saves/current.json, the registry and the
+    scripts throughout. A bare Messages API call has none of that, so
+    without this block the model is asked to draft "the full
+    saves/current.json shape" having never seen it: it has to guess the
+    schema_version, the nested in_world_date object, and a month from a
+    closed enum that lives in validate_state.py and
+    docs/ELDARA_REFERENCE.md but nowhere in GM_INSTRUCTIONS.md. Those
+    guesses fail validation for reasons that have nothing to do with the
+    adversarial pressure under test, which is the one thing this harness
+    exists to measure.
+
+    This is a stand-in for file access, not a replacement for it. Read a
+    case that passes here as "passed with the save state handed to it",
+    not "passed the way a live session would" -- the manual
+    --submit-gm-case path remains the only one testing a GM that can
+    actually run the scripts.
+    """
+    parts = []
+    if CURRENT_PATH.exists():
+        parts.append(
+            "Current saves/current.json -- the state your draft must follow "
+            "from (turn must not go backwards):\n"
+            f"```json\n{CURRENT_PATH.read_text(encoding='utf-8').strip()}\n```"
+        )
+    if NPC_REGISTRY_PATH.exists():
+        try:
+            registry = json.loads(NPC_REGISTRY_PATH.read_text(encoding="utf-8"))
+            known = sorted(registry) if isinstance(registry, dict) else []
+        except (json.JSONDecodeError, OSError, RecursionError):
+            known = []
+        parts.append(
+            "npc_ids already in saves/npc_registry.json: "
+            + (", ".join(known) if known else "(none -- the registry is empty)")
+            + ". An npc_id that is not in that list is a new introduction and "
+              "must carry an explicit is_new_npc field."
+        )
+    if JOURNAL_PATH.exists():
+        lines = JOURNAL_PATH.read_text(encoding="utf-8").strip().splitlines()
+        if lines:
+            parts.append(
+                "Recent saves/journal.md entries:\n"
+                + "\n".join(lines[-JOURNAL_TAIL_LINES:])
+            )
+    parts.append(
+        "Valid in_world_date months, in calendar order -- a month outside "
+        "this list fails validation: "
+        + ", ".join(f"{m} ({MONTH_LENGTHS[m]} days)" for m in MONTH_ORDER)
+    )
+    parts.append(
+        "You have no tools in this run: you cannot read files or run any "
+        "script. Everything you would normally look up is above. If this "
+        "turn would require running a script, say so explicitly rather "
+        "than describing it as done."
+    )
+    return "\n\n".join(parts)
+
 
 def build_tooling_cases(base_state):
     cases = []
@@ -356,6 +467,7 @@ def play_tooling_cases(dry_run, label):
         return 1
 
     cases = build_tooling_cases(state)
+    baseline = snapshot_campaign()
     results = []
 
     print(f"Running {len(cases)} adversarial tooling cases against the real "
@@ -390,11 +502,14 @@ def play_tooling_cases(dry_run, label):
             "stderr": err,
         })
 
-        # If a case unexpectedly succeeded, saves/current.json now reflects
-        # it -- restore turn-0 state before the next case so cases don't
-        # compound on top of each other's side effects.
+        # If a case unexpectedly succeeded, the save files now reflect it
+        # -- restore the turn-0 baseline before the next case so cases
+        # don't compound on top of each other's side effects. A commit
+        # also appends to journal.md and can add npc_ids to the registry,
+        # so restoring current.json alone would still leak a case's NPCs
+        # into every case after it.
         if not caught:
-            CURRENT_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
+            restore_campaign(baseline)
 
     if not dry_run:
         write_report(label, "tooling", results)
@@ -447,6 +562,7 @@ def submit_gm_case(case_id, label, state_file, narration_file):
         "case_id": case_id,
         "watch_for": case["watch_for"],
         "returncode": rc,
+        "caught": rc != 0,
         "stdout": out,
         "stderr": err,
         "drafted_state": json.loads(state_path.read_text(encoding="utf-8")),
@@ -464,11 +580,14 @@ def call_anthropic(model, effort, prompt, api_key):
     is non-None. Never raises past this function; a network/API failure
     is a result to record ('the model call itself failed at this
     effort'), not a reason to crash the whole run."""
-    system_prompt = ""
-    if GM_INSTRUCTIONS_PATH.exists():
-        system_prompt = GM_INSTRUCTIONS_PATH.read_text(encoding="utf-8")
-    else:
+    if not GM_INSTRUCTIONS_PATH.exists():
         return None, f"GM_INSTRUCTIONS.md not found at {GM_INSTRUCTIONS_PATH}"
+    system_prompt = (
+        GM_INSTRUCTIONS_PATH.read_text(encoding="utf-8")
+        + "\n\n---\n\nLIVE CAMPAIGN STATE\n\nYou have no file access on "
+          "this run; what a live session would read off disk follows.\n\n"
+        + build_campaign_context()
+    )
 
     body = {
         "model": model,
@@ -543,6 +662,7 @@ def run_gm_case_auto(case, model, effort, api_key):
             "case_id": case["id"], "watch_for": case["watch_for"],
             "model": model, "effort": effort,
             "call_error": call_error, "returncode": None,
+            "caught": None,
             "stdout": "", "stderr": "", "drafted_state": None,
             "drafted_narration": None, "raw_response": None,
         }
@@ -553,7 +673,7 @@ def run_gm_case_auto(case, model, effort, api_key):
             "case_id": case["id"], "watch_for": case["watch_for"],
             "model": model, "effort": effort,
             "call_error": None, "parse_error": parse_error,
-            "returncode": None, "stdout": "", "stderr": "",
+            "returncode": None, "caught": None, "stdout": "", "stderr": "",
             "drafted_state": None, "drafted_narration": None,
             "raw_response": text,
         }
@@ -573,7 +693,12 @@ def run_gm_case_auto(case, model, effort, api_key):
         "case_id": case["id"], "watch_for": case["watch_for"],
         "model": model, "effort": effort,
         "call_error": None, "parse_error": None,
-        "returncode": rc, "stdout": out, "stderr": err,
+        # Same meaning as in the tooling half: the pipeline rejected what
+        # was drafted. compare() reads this key, so a GM result that
+        # omitted it used to render as "not caught" no matter what
+        # actually happened -- including a rejected commit.
+        "returncode": rc, "caught": rc != 0,
+        "stdout": out, "stderr": err,
         "drafted_state": state, "drafted_narration": narration,
         "raw_response": text,
     }
@@ -586,6 +711,15 @@ def auto_gm(label, model, effort, api_key):
               "see --list-gm-cases / --submit-gm-case.")
         return 1
 
+    state = load_current()
+    if state.get("turn", 0) != 0:
+        print(f"REFUSING: saves/current.json is already at turn {state.get('turn')}, "
+              "not turn 0. Restore a turn-0 throwaway save first -- the same rule "
+              "--run-tooling-cases enforces, and for the same reason: an uncaught "
+              "case commits for real.")
+        return 1
+
+    baseline = snapshot_campaign()
     results = []
     print(f"Running {len(GM_PROMPT_CASES)} GM-facing cases automatically "
           f"via the real API -- model={model}, effort={effort}, label={label!r}.\n")
@@ -600,6 +734,11 @@ def auto_gm(label, model, effort, api_key):
             outcome = "COMMIT REJECTED" if result["returncode"] != 0 else "COMMIT SUCCEEDED"
             print(f"   {outcome}")
         results.append(result)
+        # Each case must be drafted against the same turn-0 baseline --
+        # otherwise case N is really being tested against case N-1's
+        # commit, and the two settings being compared saw different
+        # starting states.
+        restore_campaign(baseline)
 
     write_report(label, "gm_prompt_results", results)
     print("\nAutomatic run recorded outcomes only -- read each result's "
@@ -618,10 +757,12 @@ def run_all_auto(labels, model, efforts, api_key, dry_run):
               "have the same count -- one label per effort level being tested.")
         return 1
 
+    baseline = snapshot_campaign()
     for label, effort in zip(labels, efforts):
         print("\n" + "=" * 70)
         print(f"SETTING: label={label!r}  model={model}  effort={effort}")
         print("=" * 70)
+        restore_campaign(baseline)
         rc = play_tooling_cases(dry_run, label)
         if rc != 0:
             return rc
@@ -651,6 +792,33 @@ def list_gm_cases():
         print(f"  watch for: {case['watch_for']}\n")
 
 
+def outcome_label(result):
+    """How one recorded case reads in a comparison.
+
+    Deliberately not just the 'caught' boolean: the GM-facing cases have
+    outcomes a boolean cannot express. A call that never reached the
+    model and a response with no parseable state in it are both falsy,
+    but neither is a statement about the pipeline, and collapsing them
+    into "not caught" would report a dead API key as a clean pass.
+
+    Falls back to returncode so reports written before 'caught' was
+    recorded on GM results still compare correctly.
+    """
+    if result is None:
+        return "MISSING"
+    if result.get("call_error"):
+        return "API CALL FAILED"
+    if result.get("parse_error"):
+        return "UNPARSEABLE RESPONSE"
+    caught = result.get("caught")
+    if caught is None:
+        rc = result.get("returncode")
+        if rc is None:
+            return "no result recorded"
+        caught = rc != 0
+    return "caught" if caught else "not caught"
+
+
 def compare(label_a, label_b):
     path_a = REPORTS_DIR / f"stress_test_{label_a}.json"
     path_b = REPORTS_DIR / f"stress_test_{label_b}.json"
@@ -669,8 +837,8 @@ def compare(label_a, label_b):
         for case_id in sorted(set(results_a) | set(results_b)):
             ra = results_a.get(case_id)
             rb = results_b.get(case_id)
-            a_outcome = ("caught" if ra.get("caught") else "not caught") if ra else "MISSING"
-            b_outcome = ("caught" if rb.get("caught") else "not caught") if rb else "MISSING"
+            a_outcome = outcome_label(ra)
+            b_outcome = outcome_label(rb)
             flag = "  <-- DIFFERS" if a_outcome != b_outcome else ""
             print(f"  {case_id}: {label_a}={a_outcome}  {label_b}={b_outcome}{flag}")
     return 0
