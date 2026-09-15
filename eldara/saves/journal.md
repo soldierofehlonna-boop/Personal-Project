@@ -97,3 +97,14 @@ Self-critique: ran clean (self_critique.py passed)
 - magic: [] -> ["lingering warmth from a healer's working on his ankle, fading over the next few days"]
 - turn: 7 -> 8
 
+
+### Turn 9 — 2026-09-15 22:41 UTC
+
+_Turn 9: first coin earned_
+
+Self-critique: ran clean (self_critique.py passed)
+
+- commit_token: "8-c50c31" -> "9-5f2341"
+- currency: {"copper": 0, "silver": 0, "gold": 0, "platinum": 0} -> {"copper": 14, "silver": 2, "gold": 0, "platinum": 0}
+- turn: 8 -> 9
+
