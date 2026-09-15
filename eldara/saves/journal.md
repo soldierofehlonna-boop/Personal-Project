@@ -17,3 +17,14 @@ Self-critique: ran clean (self_critique.py passed)
 - gear: [{"name": "T-shirt", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Jeans", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Underwear", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Socks", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Shoes", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}] -> [{"name": "T-shirt", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Jeans", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Underwear", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Socks", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Shoes", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Traveler's cloak", "acquired_turn": 1, "acquired_event": "Given by an innkeeper against the cold"}]
 - turn: 0 -> 1
 
+
+### Turn 2 — 2026-09-15 22:40 UTC
+
+_Turn 2: language established_
+
+Self-critique: ran clean (self_critique.py passed)
+
+- commit_token: "1-1377b6" -> "2-a50122"
+- language: null -> {"established": true, "detail": "Common tongue, learned by ear over the first days"}
+- turn: 1 -> 2
+

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "turn": 1,
+  "turn": 2,
   "in_world_date": {
     "day": 1,
     "month": "Seedmonth",
@@ -46,5 +46,9 @@
     "gold": 0,
     "platinum": 0
   },
-  "commit_token": "1-1377b6"
+  "language": {
+    "established": true,
+    "detail": "Common tongue, learned by ear over the first days"
+  },
+  "commit_token": "2-a50122"
 }
