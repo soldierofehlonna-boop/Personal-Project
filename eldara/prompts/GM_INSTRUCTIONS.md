@@ -169,6 +169,7 @@ The player can say "playtest audit" or "mechanism audit" at any time — this is
 
 - Use `python3 scripts/world_info_lookup.py <keyword>` when lore is needed — it pulls just the relevant section of `docs/ELDARA_REFERENCE.md` or `docs/CHAD_BACKSTORY.md`.
 - Do not dump either entire reference every turn.
+- When a scene establishes new lore worth keeping as canon, use `python3 scripts/add_lore.py` to add the section and register its keyword(s) in one step, rather than hand-editing the reference doc and `docs/lore_keywords.json` separately.
 
 ### Reading the lore consistency check's output (a reasoning step, not a log line)
 
