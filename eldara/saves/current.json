@@ -1,12 +1,14 @@
 {
   "schema_version": 1,
-  "turn": 3,
+  "turn": 4,
   "in_world_date": {
     "day": 1,
     "month": "Seedmonth",
     "year": 1
   },
-  "status": [],
+  "status": [
+    "twisted ankle, favors it going down stairs"
+  ],
   "magic": [],
   "gear": [
     {
@@ -55,9 +57,8 @@
       "npc_id": "innkeeper-maren",
       "name": "Maren",
       "disposition": "wary but not unkind",
-      "note": "Runs the inn where Chad first woke; gave him the cloak.",
-      "last_referenced_turn": 3
+      "note": "Runs the inn where Chad first woke; gave him the cloak."
     }
   ],
-  "commit_token": "3-6c18bd"
+  "commit_token": "4-5f82d3"
 }

@@ -39,3 +39,15 @@ Self-critique: ran clean (self_critique.py passed)
 - npc_relationships: null -> [{"npc_id": "innkeeper-maren", "name": "Maren", "disposition": "wary but not unkind", "note": "Runs the inn where Chad first woke; gave him the cloak.", "last_referenced_turn": 3}]
 - turn: 2 -> 3
 
+
+### Turn 4 — 2026-09-15 22:40 UTC
+
+_Turn 4: twisted ankle_
+
+Self-critique: ran clean (self_critique.py passed)
+
+- commit_token: "3-6c18bd" -> "4-5f82d3"
+- npc_relationships: [{"npc_id": "innkeeper-maren", "name": "Maren", "disposition": "wary but not unkind", "note": "Runs the inn where Chad first woke; gave him the cloak.", "last_referenced_turn": 3}] -> [{"npc_id": "innkeeper-maren", "name": "Maren", "disposition": "wary but not unkind", "note": "Runs the inn where Chad first woke; gave him the cloak."}]
+- status: [] -> ["twisted ankle, favors it going down stairs"]
+- turn: 3 -> 4
+
