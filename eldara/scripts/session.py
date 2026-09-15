@@ -462,6 +462,38 @@ def cmd_start(_args):
 
 
 # ---------------------------------------------------------------------------
+# bootstrap
+# ---------------------------------------------------------------------------
+
+def cmd_bootstrap(args):
+    """Runs setup, then check, then start, in one pass -- the exact
+    sequence the README's Quick Start already documents as three
+    separate commands. Stops at the first failure rather than plowing
+    ahead: check assumes setup actually installed deps/hooks, and start
+    assumes check confirmed those actually took.
+
+    This does not replace bootstrap.sh -- that script has its own
+    additional job (self-deleting once it's run, for a fresh Cloud
+    Session -- see its own docstring). This exists so ANY environment,
+    cloud or otherwise, has one command from a fresh clone to
+    ready-to-play, instead of three."""
+    print("=" * 70)
+    print("BOOTSTRAP -- setup, check, start")
+    print("=" * 70)
+    rc = cmd_setup(args)
+    if rc:
+        return rc
+    print()
+    rc = cmd_check(args)
+    if rc:
+        print("\nBootstrap stopped: 'check' reported issues after setup. Fix them, "
+              "then re-run 'python3 scripts/session.py bootstrap' (or just 'check').")
+        return rc
+    print()
+    return cmd_start(args)
+
+
+# ---------------------------------------------------------------------------
 # commit
 # ---------------------------------------------------------------------------
 
@@ -615,6 +647,8 @@ def main():
     sub.add_parser("setup", help="One-time: install dependencies and git hooks.")
     sub.add_parser("check", help="Verify this machine/repo is set up correctly.")
     sub.add_parser("start", help="Validate current state and print a status summary.")
+    sub.add_parser("bootstrap", help="Run setup, check, and start in one pass -- "
+                                      "everything needed to go from a fresh clone to ready-to-play.")
 
     p_commit = sub.add_parser("commit", help="Validate and promote a proposed state file.")
     p_commit.add_argument("file", nargs="?", default=None,
@@ -673,6 +707,7 @@ def main():
         "setup": cmd_setup,
         "check": cmd_check,
         "start": cmd_start,
+        "bootstrap": cmd_bootstrap,
         "commit": cmd_commit,
         "audit": cmd_audit,
         "earn-coverage": cmd_earn_coverage,

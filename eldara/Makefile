@@ -1,7 +1,10 @@
-.PHONY: setup check start commit audit loop validate status
+.PHONY: setup check start bootstrap commit audit loop validate status
 
 setup:
 	python3 scripts/session.py setup
+
+bootstrap:
+	python3 scripts/session.py bootstrap
 
 check:
 	python3 scripts/session.py check

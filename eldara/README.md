@@ -45,6 +45,14 @@ chain specifically, since that's what this project is built around.
 ```
 git clone <repo-url> eldara_new && cd eldara_new
 git init                                # if the clone didn't already
+python3 scripts/session.py bootstrap    # one-time: setup + check + start in one pass
+```
+
+(`bootstrap` is just `setup`, `check`, and `start` run in sequence, stopping at
+the first failure — run them separately instead if you want to inspect each
+step's output on its own:)
+
+```
 python3 scripts/session.py setup        # one-time: installs deps + git hooks
 python3 scripts/session.py check        # confirm everything's in order
 python3 scripts/session.py start        # validate + print current status
@@ -85,8 +93,9 @@ choice, and `prompts/FIRST_MESSAGE.md` if this is a brand-new campaign.
 | `saves/pinned_facts.json` | Short, load-bearing "never forget" facts (Auferet's pinned-facts idea), hard-checked against every drafted turn by `scripts/lore_consistency_check.py`. Add to it during play as new facts get established. |
 | `saves/locations.json` | Fixed places and pairwise travel durations, sourced from `docs/ELDARA_REFERENCE.md` §2.8/§2.3. Backs `current_location`/`travel` in `saves/current.json` and `scripts/location_lookup.py`. |
 | `saves/player_notes.md` | Out-of-character preferences (pacing, tone, content limits) — never narrated. |
-| `scripts/session.py` | Single entry point for setup, checks, commits, audits, and earning coverage. |
+| `scripts/session.py` | Single entry point for setup, checks, commits, audits, and earning coverage. `bootstrap` runs setup + check + start in one pass. |
 | `scripts/location_lookup.py` | Look up a tracked place or the travel duration between two, from `saves/locations.json` — the fixed-coordinate "world map" analog. Read-only and advisory, like `world_info_lookup.py`. |
+| `scripts/add_lore.py` | Add a new lore section to `docs/ELDARA_REFERENCE.md`/`docs/CHAD_BACKSTORY.md` and/or register keyword(s) for it in `docs/lore_keywords.json`, in one command instead of hand-editing both. |
 | `scripts/export_save.py` | Bundle `current.json`, `journal.md`, `locations.json` and `npc_registry.json` into one shareable/archivable file. Excludes `player_notes.md` unless `--include-player-notes` is passed. |
 | `saves/dashboard/campaign_dashboard.html` | Standalone, offline dashboard. Open directly in a browser and paste in the contents of `current.json` (and optionally `locations.json`/`npc_registry.json`, or an `export_save.py` bundle's `current_state` field) to view a glanceable status summary. Never writes back to any save file. |
 | `scripts/earn_clean_slate.py` | Plays fixed, schema-valid turns through the real commit pipeline to legitimately earn Pass-1 audit coverage on a fresh/throwaway campaign. Wrapped by `session.py earn-coverage`; never run against real campaign history. |
