@@ -108,3 +108,14 @@ Self-critique: ran clean (self_critique.py passed)
 - currency: {"copper": 0, "silver": 0, "gold": 0, "platinum": 0} -> {"copper": 14, "silver": 2, "gold": 0, "platinum": 0}
 - turn: 8 -> 9
 
+
+### Turn 10 — 2026-09-15 22:41 UTC
+
+_Turn 10: continuity correction logged_
+
+Self-critique: ran clean (self_critique.py passed)
+
+- commit_token: "9-5f2341" -> "10-00f637"
+- continuity_notes: null -> ["Corrected day count after a skipped in-world date on turn 7"]
+- turn: 9 -> 10
+

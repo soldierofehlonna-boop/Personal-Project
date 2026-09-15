@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "turn": 9,
+  "turn": 10,
   "in_world_date": {
     "day": 1,
     "month": "Seedmonth",
@@ -80,5 +80,8 @@
       "note": "The inn Maren runs"
     }
   ],
-  "commit_token": "9-5f2341"
+  "continuity_notes": [
+    "Corrected day count after a skipped in-world date on turn 7"
+  ],
+  "commit_token": "10-00f637"
 }
