@@ -26,6 +26,10 @@ eldara/saves/backups/*.json
 # snapshots meant to be handed off or archived outside the repo, not
 # tracked as repo history -- same reasoning as saves/backups/ above.
 eldara/saves/exports/*.json
+# Transcripts from scripts/run_stress_prompts.py are run artifacts for the
+# same reason the JSON reports above are: they record one run against a
+# throwaway copy, and they carry model output rather than project content.
+eldara/saves/exports/*.md
 !eldara/saves/exports/.gitkeep
 
 # Any private key that ends up in the repo directory by mistake (SSH,
