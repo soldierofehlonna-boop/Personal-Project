@@ -75,3 +75,14 @@ Self-critique: ran clean (self_critique.py passed)
 - throughline: null -> ["Starting to plan more than one step ahead, instead of just reacting"]
 - turn: 5 -> 6
 
+
+### Turn 7 — 2026-09-15 22:41 UTC
+
+_Turn 7: entity tracked (The Hollow Bell)_
+
+Self-critique: ran clean (self_critique.py passed)
+
+- commit_token: "6-37a92c" -> "7-46dd9c"
+- entities: null -> [{"name": "The Hollow Bell", "type": "location", "note": "The inn Maren runs"}]
+- turn: 6 -> 7
+

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "turn": 6,
+  "turn": 7,
   "in_world_date": {
     "day": 1,
     "month": "Seedmonth",
@@ -71,5 +71,12 @@
   "throughline": [
     "Starting to plan more than one step ahead, instead of just reacting"
   ],
-  "commit_token": "6-37a92c"
+  "entities": [
+    {
+      "name": "The Hollow Bell",
+      "type": "location",
+      "note": "The inn Maren runs"
+    }
+  ],
+  "commit_token": "7-46dd9c"
 }
