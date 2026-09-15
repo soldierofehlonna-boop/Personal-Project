@@ -325,6 +325,16 @@ def pass2_adversarial(tmp_dir):
     ok7, detail7 = _check_new_npc_commit_stays_in_sync(tmp_dir)
     results.append(("commit_state.py keeps git history in sync when a turn introduces a new NPC", ok7, detail7))
 
+    # 8. gm_cases.py's case list is derived from prompts/GM_INSTRUCTIONS.md
+    #    and can only go stale silently -- a summary that still reads as
+    #    authoritative after the thing it summarizes moved is worse than
+    #    no summary at all. --check-sources exits non-zero the moment any
+    #    case points at a heading that no longer exists, so running it
+    #    here is what keeps that list honest without anyone remembering to.
+    code8, out8 = run_script(["scripts/gm_cases.py", "--check-sources"])
+    results.append(("gm_cases.py's cases still point at real GM_INSTRUCTIONS.md headings",
+                    code8 == 0, out8))
+
     passed = 0
     for label, ok, _out in results:
         mark = "PASS" if ok else "FAIL"
