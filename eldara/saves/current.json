@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "turn": 5,
+  "turn": 6,
   "in_world_date": {
     "day": 1,
     "month": "Seedmonth",
@@ -57,8 +57,7 @@
       "npc_id": "innkeeper-maren",
       "name": "Maren",
       "disposition": "wary but not unkind",
-      "note": "Runs the inn where Chad first woke; gave him the cloak.",
-      "last_referenced_turn": 5
+      "note": "Runs the inn where Chad first woke; gave him the cloak."
     }
   ],
   "open_threads": [
@@ -69,5 +68,8 @@
       "deadline_turn": 12
     }
   ],
-  "commit_token": "5-0a7ab1"
+  "throughline": [
+    "Starting to plan more than one step ahead, instead of just reacting"
+  ],
+  "commit_token": "6-37a92c"
 }

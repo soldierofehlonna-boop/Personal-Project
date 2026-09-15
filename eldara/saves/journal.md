@@ -63,3 +63,15 @@ Self-critique: ran clean (self_critique.py passed)
 - open_threads: null -> [{"text": "Maren wants payment for the room by the week's end", "added_turn": 5, "active": true, "deadline_turn": 12}]
 - turn: 4 -> 5
 
+
+### Turn 6 — 2026-09-15 22:41 UTC
+
+_Turn 6: throughline entry (forward planning)_
+
+Self-critique: ran clean (self_critique.py passed)
+
+- commit_token: "5-0a7ab1" -> "6-37a92c"
+- npc_relationships: [{"npc_id": "innkeeper-maren", "name": "Maren", "disposition": "wary but not unkind", "note": "Runs the inn where Chad first woke; gave him the cloak.", "last_referenced_turn": 5}] -> [{"npc_id": "innkeeper-maren", "name": "Maren", "disposition": "wary but not unkind", "note": "Runs the inn where Chad first woke; gave him the cloak."}]
+- throughline: null -> ["Starting to plan more than one step ahead, instead of just reacting"]
+- turn: 5 -> 6
+
