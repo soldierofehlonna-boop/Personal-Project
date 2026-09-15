@@ -1,0 +1,5 @@
+# Core dependencies for Eldara's tooling scripts.
+# jsonschema is optional -- validate_state.py falls back to its own
+# built-in manual checks if it isn't installed, but stricter schema
+# validation is available when it is.
+jsonschema>=4.0

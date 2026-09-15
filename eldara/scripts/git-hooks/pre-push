@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Pre-push hook: runs a final check via _check_pushed_state.py before
+# allowing a push, catching anything the pre-commit hook might have
+# missed (e.g. a commit made with --no-verify).
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+if [ -f saves/current.json ]; then
+    if ! python3 scripts/git-hooks/_check_pushed_state.py; then
+        echo "pre-push: BLOCKED -- saves/current.json is not in a valid, committed state." >&2
+        exit 1
+    fi
+fi
+
+exit 0

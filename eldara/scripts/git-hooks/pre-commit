@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Pre-commit hook: refuses to let an invalid saves/current.json be
+# committed. Installed into .git/hooks/pre-commit by
+# 'python3 scripts/session.py setup'.
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# Only bother validating if saves/current.json is actually part of this commit.
+if git diff --cached --name-only | grep -q "^saves/current.json$"; then
+    echo "pre-commit: validating saves/current.json..."
+    if ! python3 scripts/validate_state.py saves/current.json; then
+        echo "pre-commit: BLOCKED -- saves/current.json failed validation. Fix it or use 'python3 scripts/session.py commit' properly." >&2
+        exit 1
+    fi
+fi
+
+exit 0

@@ -1,0 +1,480 @@
+#!/usr/bin/env python3
+"""Validate saves/current.json (or an arbitrary state file) against
+state_schema.json plus a handful of extra rules that plain JSON Schema
+can't easily express (per-month day bounds, closed inventory at turn 0,
+non-negative currency, soft-cap array sizes, npc_id registry consistency).
+
+manual_checks() below is the authoritative enforcement layer: it runs
+unconditionally, whether or not the optional jsonschema package is
+installed. It covers required fields, basic types, the month enum, and
+array-internal duplicate detection directly, so a missing field, a wrong
+type, an invalid month name, or a colliding npc_id/gear name/thread text
+is caught even without jsonschema present. This intentionally duplicates
+only a bounded subset of what a full jsonschema pass would catch (see
+TOP_LEVEL_TYPES below) -- it's not a JSON Schema reimplementation, just
+enough hand-written coverage that this file's actual behavior matches
+its documented guarantee.
+
+Usage:
+    python3 scripts/validate_state.py [path]      # authoritative check
+    python3 scripts/validate_state.py --quick     # fast gear-only glance
+"""
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+SCHEMA_PATH = ROOT / "state_schema.json"
+DEFAULT_STATE_PATH = ROOT / "saves" / "current.json"
+NPC_REGISTRY_PATH = ROOT / "saves" / "npc_registry.json"
+LOCATIONS_PATH = ROOT / "saves" / "locations.json"
+
+BASELINE_GEAR = {"T-shirt", "Jeans", "Underwear", "Socks", "Shoes"}
+
+SOFT_CAPS = {
+    "npc_relationships": 10,
+    "open_threads": 8,
+    "continuity_notes": 5,
+    "throughline": 6,
+}
+
+MONEY_WORDS = {"coin", "coins", "mark", "marks", "crown", "crowns",
+               "sovereign", "sovereigns", "penny", "pennies", "copper",
+               "silver", "gold", "platinum"}
+
+# Fields validate_state.py itself understands well enough to name a type
+# for, independent of the jsonschema package -- kept intentionally small
+# and hand-maintained rather than parsed out of state_schema.json, so a
+# schema change can't silently alter what this layer checks without a
+# human noticing here too.
+TOP_LEVEL_REQUIRED = ["schema_version", "turn", "in_world_date", "gear", "currency"]
+TOP_LEVEL_TYPES = {
+    "schema_version": int,
+    "turn": int,
+    "in_world_date": dict,
+    "gear": list,
+    "currency": dict,
+    "status": list,
+    "magic": list,
+    "npc_relationships": list,
+    "open_threads": list,
+    "continuity_notes": list,
+    "throughline": list,
+    "entities": list,
+    "factions": list,
+    "scene": str,
+    "current_location": str,
+    "travel": dict,
+    "handoff_summary": str,
+    "arc_title": str,
+    "chapter_title": str,
+}
+VALID_MONTHS = {
+    "Frostwane", "Thawmoon", "Seedmonth", "Greenrise", "Sunheight",
+    "Highsummer", "Goldleaf", "Harvestide", "Mistfall", "Darkening",
+    "Longnight", "Deepwinter", "The Turning",
+}
+# Calendar order (for date-ordinal comparisons -- e.g. "has this journey's
+# ETA passed yet"), matching the month enum above. Order and each month's
+# length are sourced from docs/ELDARA_REFERENCE.md \u00a72.2's calendar line
+# ("Frostwane . Thawmoon . ... . Longnight . Deepwinter", 12 x 30-day
+# months) plus \u00a72.9's holiday table, which places "The Turning" as a
+# midwinter 5-day festival -- i.e. between Longnight and Deepwinter,
+# not simply appended after the ordinary 12. manual_checks() above
+# already enforces the same 5-vs-30 day-length split for the day-bound
+# check; this list additionally encodes month ORDER, since nothing
+# needed that before travel-date comparisons existed.
+MONTH_ORDER = [
+    "Frostwane", "Thawmoon", "Seedmonth", "Greenrise", "Sunheight",
+    "Highsummer", "Goldleaf", "Harvestide", "Mistfall", "Darkening",
+    "Longnight", "The Turning", "Deepwinter",
+]
+MONTH_LENGTHS = {m: (5 if m == "The Turning" else 30) for m in MONTH_ORDER}
+
+
+def date_ordinal(date):
+    """Converts an in_world_date dict ({day, month, year}) to a single
+    increasing integer, so two dates can be compared with plain <, ==, >
+    instead of hand-rolling day/month/year comparisons at every call
+    site. Returns None if the date is missing required fields or names
+    an unrecognized month -- callers should treat that as "can't compare"
+    rather than guessing.
+
+    Placed here rather than in commit_state.py (its first caller) because
+    this module already owns MONTH_ORDER/MONTH_LENGTHS and the informal
+    version of this same calendar knowledge (manual_checks()'s per-month
+    day-bound check) -- keeping the calendar logic in one file means a
+    future calendar change (a new month, a reordering) can't update one
+    copy and silently leave the other stale."""
+    if not isinstance(date, dict):
+        return None
+    day, month, year = date.get("day"), date.get("month"), date.get("year")
+    if month not in MONTH_ORDER or not isinstance(day, int) or not isinstance(year, int):
+        return None
+    days_per_year = sum(MONTH_LENGTHS.values())
+    month_index = MONTH_ORDER.index(month)
+    days_before_this_month = sum(MONTH_LENGTHS[m] for m in MONTH_ORDER[:month_index])
+    return year * days_per_year + days_before_this_month + day
+
+KNOWN_TOP_LEVEL_FIELDS = set(TOP_LEVEL_TYPES) | {"commit_token"}
+
+
+def load_json(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def load_json_as_dict(path):
+    """Like load_json(), but raises ValueError if the parsed JSON isn't a
+    dict at the top level. Every caller in this file assumes dict-shaped
+    state -- valid JSON that parses to a list, string, or number would
+    otherwise crash on the first .get()/.keys() call instead of failing
+    with a clear message."""
+    data = load_json(path)
+    if not isinstance(data, dict):
+        raise ValueError(f"expected a JSON object at the top level, got {type(data).__name__}")
+    return data
+
+
+def try_jsonschema_validation(state, schema):
+    """Use the jsonschema package if available; otherwise skip silently
+    and rely entirely on manual_checks() below."""
+    try:
+        import jsonschema
+    except ImportError:
+        print("(jsonschema package not installed — using built-in checks only; "
+              "run `pip install jsonschema` for stricter schema validation)")
+        return []
+
+    validator = jsonschema.Draft7Validator(schema)
+    errors = sorted(validator.iter_errors(state), key=lambda e: list(e.path))
+    return [f"{'.'.join(str(p) for p in e.path) or '(root)'}: {e.message}" for e in errors]
+
+
+def manual_checks(state):
+    """Checks that always run, regardless of whether jsonschema is
+    installed -- this is the authoritative enforcement layer."""
+    errors = []
+    warnings = []
+
+    # Required top-level fields: presence and non-null. A field that's
+    # present but explicitly null would otherwise pass both this check
+    # (key exists) and the type check below (which deliberately skips
+    # None, since optional fields may be null/absent) -- required fields
+    # need this explicit null rejection to actually be required.
+    for field in TOP_LEVEL_REQUIRED:
+        if field not in state:
+            errors.append(f"required field '{field}' is missing")
+        elif state[field] is None:
+            errors.append(f"required field '{field}' is present but null")
+
+    # Basic top-level types. Booleans are rejected explicitly wherever
+    # int is expected: Python's isinstance(True, int) is True (bool is
+    # an int subclass), so a plain isinstance check alone would silently
+    # accept "turn: true" as a valid integer.
+    for field, expected_type in TOP_LEVEL_TYPES.items():
+        if field in state and state[field] is not None:
+            value = state[field]
+            if expected_type is int and isinstance(value, bool):
+                errors.append(f"{field} should be type int, got bool")
+            elif not isinstance(value, expected_type):
+                errors.append(
+                    f"{field} should be type {expected_type.__name__}, "
+                    f"got {type(value).__name__}"
+                )
+
+    # Unknown/typo'd top-level fields: the schema has no
+    # additionalProperties:false, so these are otherwise accepted and
+    # persisted silently forever. Flagged as a warning rather than an
+    # error, since a genuinely new field a human added on purpose
+    # shouldn't hard-block a commit -- but a typo like "curency" should
+    # be visible rather than silently retained.
+    unknown_fields = set(state.keys()) - KNOWN_TOP_LEVEL_FIELDS
+    for field in sorted(unknown_fields):
+        warnings.append(f"unrecognized top-level field '{field}' -- typo, or a deliberate new field not yet added to TOP_LEVEL_TYPES?")
+
+    # Per-month day bound (schema only knows a loose 1-35 ceiling) and
+    # month enum.
+    date = state.get("in_world_date", {})
+    month = date.get("month") if isinstance(date, dict) else None
+    day = date.get("day") if isinstance(date, dict) else None
+    if month is not None and month not in VALID_MONTHS:
+        errors.append(f"in_world_date.month='{month}' is not a recognized month")
+    if month and day is not None:
+        max_day = 5 if month == "The Turning" else 30
+        if day > max_day:
+            errors.append(f"in_world_date.day={day} exceeds max {max_day} for month '{month}'")
+
+    # Turn must be non-negative.
+    turn = state.get("turn")
+    if isinstance(turn, (int, float)) and turn < 0:
+        errors.append(f"turn={turn} is negative")
+
+    # Closed inventory at turn 0. state.get("gear", []) alone isn't safe
+    # here: a present-but-null "gear" field returns None (not the []
+    # default) from .get(), which would then crash iteration below. The
+    # null case is already recorded as its own error above (required
+    # field present but null), so this block just needs to not also
+    # crash on top of that.
+    if state.get("turn") == 0:
+        gear_field = state.get("gear")
+        gear_field = gear_field if isinstance(gear_field, list) else []
+        # Non-dict gear entries (e.g. gear submitted as a list of bare
+        # strings) are flagged as their own error and excluded from the
+        # baseline comparison below, rather than crashing on g.get().
+        malformed_gear_entries = [g for g in gear_field if not isinstance(g, dict)]
+        for g in malformed_gear_entries:
+            errors.append(f"gear entry {g!r} is not an object (expected {{'name': ...}}, got {type(g).__name__})")
+        gear_names = {g.get("name") for g in gear_field if isinstance(g, dict)}
+        if not malformed_gear_entries and gear_names != BASELINE_GEAR:
+            errors.append(
+                f"turn 0 gear must be exactly {sorted(BASELINE_GEAR)}, got {sorted(gear_names)}"
+            )
+
+    # Currency never negative (schema covers this too, but double-check).
+    currency = state.get("currency", {})
+    if isinstance(currency, dict):
+        for denom, amount in currency.items():
+            if isinstance(amount, (int, float)) and not isinstance(amount, bool) and amount < 0:
+                errors.append(f"currency.{denom}={amount} is negative")
+
+    # gear_list filters to dict entries only; non-dict entries are
+    # reported once above (turn-0 check) rather than repeatedly here.
+    raw_gear_list = state.get("gear", []) if isinstance(state.get("gear"), list) else []
+    gear_list = [g for g in raw_gear_list if isinstance(g, dict)]
+    if state.get("turn") != 0:
+        for g in raw_gear_list:
+            if not isinstance(g, dict):
+                errors.append(f"gear entry {g!r} is not an object (expected {{'name': ...}}, got {type(g).__name__})")
+
+    # No gear entry pretending to be currency.
+    for g in gear_list:
+        name = str(g.get("name", "")).strip().lower()
+        if name in MONEY_WORDS:
+            errors.append(f"gear entry '{g.get('name')}' looks like currency; use the currency object instead")
+
+    # Duplicate identity-bearing entries within a single array -- not
+    # just cross-checked against the persistent npc_registry.json, but
+    # also checked for internal collisions in the same submitted state.
+    gear_seen = {}
+    for idx, g in enumerate(gear_list):
+        name = str(g.get("name", "")).strip().lower()
+        if name and name in gear_seen:
+            errors.append(f"gear has duplicate entries named '{g.get('name')}' (indices {gear_seen[name]} and {idx})")
+        else:
+            gear_seen[name] = idx
+
+    raw_npc_list = state.get("npc_relationships", []) if isinstance(state.get("npc_relationships"), list) else []
+    npc_list = [n for n in raw_npc_list if isinstance(n, dict)]
+    for n in raw_npc_list:
+        if not isinstance(n, dict):
+            errors.append(f"npc_relationships entry {n!r} is not an object (expected {{'npc_id': ..., 'name': ...}}, got {type(n).__name__})")
+    npc_id_seen = {}
+    for idx, npc in enumerate(npc_list):
+        npc_id = npc.get("npc_id")
+        if npc_id and npc_id in npc_id_seen:
+            errors.append(f"npc_relationships has duplicate npc_id '{npc_id}' (indices {npc_id_seen[npc_id]} and {idx})")
+        else:
+            npc_id_seen[npc_id] = idx
+
+    raw_thread_list = state.get("open_threads", []) if isinstance(state.get("open_threads"), list) else []
+    thread_list = [t for t in raw_thread_list if isinstance(t, dict)]
+    for t in raw_thread_list:
+        if not isinstance(t, dict):
+            errors.append(f"open_threads entry {t!r} is not an object (expected {{'text': ..., 'added_turn': ...}}, got {type(t).__name__})")
+    thread_text_seen = {}
+    for idx, thread in enumerate(thread_list):
+        text = str(thread.get("text", "")).strip().lower()
+        if text and text in thread_text_seen:
+            errors.append(f"open_threads has duplicate entries with text '{thread.get('text')}' (indices {thread_text_seen[text]} and {idx})")
+        else:
+            thread_text_seen[text] = idx
+
+    # Soft caps on tracked arrays.
+    for field, cap in SOFT_CAPS.items():
+        items = state.get(field, [])
+        if isinstance(items, list) and len(items) > cap:
+            errors.append(f"{field} has {len(items)} entries, exceeding soft cap of {cap}")
+
+    # open_threads deadline_turn must be strictly after added_turn.
+    for thread in thread_list:
+        added = thread.get("added_turn")
+        deadline = thread.get("deadline_turn")
+        if deadline is not None and added is not None and deadline <= added:
+            errors.append(
+                f"open_thread '{thread.get('text', '')[:40]}...' has deadline_turn <= added_turn"
+            )
+        if thread.get("active") and deadline is not None:
+            current_turn = state.get("turn", 0)
+            if isinstance(current_turn, (int, float)) and current_turn > deadline:
+                warnings.append(
+                    f"open_thread '{thread.get('text', '')[:40]}...' has a lapsed active deadline "
+                    f"(deadline_turn={deadline}, current turn={current_turn})"
+                )
+
+    # npc_id registry consistency, if a registry file exists.
+    if NPC_REGISTRY_PATH.exists():
+        try:
+            registry = load_json(NPC_REGISTRY_PATH)
+        except (json.JSONDecodeError, OSError):
+            registry = {}
+        for npc in npc_list:
+            npc_id = npc.get("npc_id")
+            is_new = npc.get("is_new_npc")
+            if npc_id is None:
+                continue
+            already_registered = npc_id in registry
+            # is_new is checked against all three states (True, False,
+            # None/omitted) so that omitting the field on a genuinely new
+            # npc_id doesn't silently skip this consistency check.
+            if is_new is True and already_registered:
+                errors.append(f"npc '{npc_id}' marked is_new_npc=true but already exists in npc_registry.json")
+            elif is_new is False and not already_registered:
+                errors.append(f"npc '{npc_id}' marked is_new_npc=false but not found in npc_registry.json")
+            elif is_new is None and not already_registered:
+                errors.append(
+                    f"npc '{npc_id}' is not in npc_registry.json (so this is a new introduction) "
+                    "but is_new_npc was omitted -- set it explicitly to true or false"
+                )
+
+    # current_location / travel consistency against saves/locations.json,
+    # if that file exists -- the World Map analog. Mirrors the
+    # npc_id-registry check just above: absence of locations.json is not
+    # itself an error (older saves, or a campaign that hasn't opted into
+    # location tracking yet, both leave these fields unset), but if a
+    # location id IS given, it must resolve to something real rather than
+    # silently accepting a typo or an invented place that would then
+    # never match locations.json's route data.
+    locations_data = None
+    if LOCATIONS_PATH.exists():
+        try:
+            locations_data = load_json(LOCATIONS_PATH)
+        except (json.JSONDecodeError, OSError):
+            locations_data = None
+
+    if locations_data is not None:
+        known_locations = locations_data.get("locations", {})
+        routes = locations_data.get("routes", {})
+
+        current_location = state.get("current_location")
+        if current_location is not None and current_location not in known_locations:
+            errors.append(
+                f"current_location '{current_location}' is not in saves/locations.json"
+            )
+
+        travel = state.get("travel")
+        if isinstance(travel, dict):
+            destination = travel.get("destination")
+            if destination is not None and destination not in known_locations:
+                errors.append(
+                    f"travel.destination '{destination}' is not in saves/locations.json"
+                )
+
+            # A journey should be FROM somewhere tracked TO somewhere
+            # tracked -- current_location doubles as the origin here,
+            # since travel.origin would just be current_location's value
+            # duplicated at the moment of departure. If current_location
+            # is missing while travel is active, that's the one case this
+            # can't cross-check at all, which is itself worth flagging
+            # rather than silently skipping the route lookup below.
+            if destination is not None and destination in known_locations:
+                if current_location is None:
+                    warnings.append(
+                        "travel is set but current_location is unset -- route duration "
+                        "can't be cross-checked against saves/locations.json without "
+                        "knowing the origin"
+                    )
+                elif current_location == destination:
+                    errors.append(
+                        f"travel.destination '{destination}' is the same as current_location "
+                        "-- Chad can't be traveling to where he already is"
+                    )
+                elif current_location in known_locations:
+                    route_key = "|".join(sorted([current_location, destination]))
+                    route = routes.get(route_key)
+                    if route is None:
+                        warnings.append(
+                            f"no known route between '{current_location}' and '{destination}' "
+                            "in saves/locations.json -- duration can't be checked against lore "
+                            "(add the route there if this is an established journey, per "
+                            "docs/ELDARA_REFERENCE.md \u00a72.8)"
+                        )
+                    else:
+                        departed_turn = travel.get("departed_turn")
+                        if departed_turn is not None and turn is not None:
+                            elapsed_turns = turn - departed_turn
+                            if isinstance(elapsed_turns, (int, float)) and elapsed_turns < 0:
+                                errors.append(
+                                    f"travel.departed_turn={departed_turn} is after the "
+                                    f"current turn={turn}"
+                                )
+
+        elif travel is not None:
+            errors.append(f"travel should be type dict, got {type(travel).__name__}")
+
+    return errors, warnings
+
+
+def run_validation(path):
+    if not SCHEMA_PATH.exists():
+        print(f"FAIL: schema file missing at {SCHEMA_PATH}")
+        return False
+
+    try:
+        state = load_json_as_dict(path)
+    except (json.JSONDecodeError, OSError, ValueError) as e:
+        print(f"FAIL: could not read/parse {path}: {e}")
+        return False
+
+    schema = load_json(SCHEMA_PATH)
+
+    schema_errors = try_jsonschema_validation(state, schema)
+    manual_errors, manual_warnings = manual_checks(state)
+
+    all_errors = schema_errors + manual_errors
+
+    for w in manual_warnings:
+        print(f"WARNING: {w}")
+
+    if all_errors:
+        print(f"FAIL: state validation failed ({path})")
+        for e in all_errors:
+            print(f"  - {e}")
+        return False
+
+    print(f"PASS: state validation succeeded ({path})")
+    return True
+
+
+def quick_check(path):
+    """Fast glance: just confirm gear parses and turn-0 baseline holds,
+    without the full schema pass."""
+    try:
+        state = load_json_as_dict(path)
+    except (json.JSONDecodeError, OSError, ValueError) as e:
+        print(f"FAIL (quick): could not read/parse {path}: {e}")
+        return False
+
+    gear_field = state.get("gear")
+    gear_field = gear_field if isinstance(gear_field, list) else []
+    gear_names = [g.get("name") if isinstance(g, dict) else g for g in gear_field]
+    print(f"Turn {state.get('turn')}: gear = {gear_names}")
+    if state.get("turn") == 0 and set(gear_names) != BASELINE_GEAR:
+        print("WARNING: turn 0 gear does not match baseline")
+    return True
+
+
+def main():
+    args = sys.argv[1:]
+    if "--quick" in args:
+        path = DEFAULT_STATE_PATH
+        quick_check(path)
+        return
+
+    path = Path(args[0]) if args else DEFAULT_STATE_PATH
+    ok = run_validation(path)
+    sys.exit(0 if ok else 1)
+
+
+if __name__ == "__main__":
+    main()

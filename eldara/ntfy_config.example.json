@@ -1,0 +1,5 @@
+{
+  "_comment": "Copy this file to ntfy_config.json (untracked, see .gitignore) and fill in a real topic name. Used by scripts/notify_ntfy.py to page you when the scheduled audit flags something -- no email account needed. Install the ntfy app (App Store/Play Store) and subscribe to the same topic name to receive the notifications. IMPORTANT: pick a long, random, unguessable topic name -- ntfy.sh's public server has no authentication, so the topic name is the only thing keeping others from publishing to or reading your notifications. A good topic looks like 'eldara-a8f3k2p9x1' (random suffix), not 'eldara'.",
+  "topic": "eldara-CHANGE-THIS-TO-SOMETHING-RANDOM-AND-UNGUESSABLE",
+  "server": "https://ntfy.sh"
+}
