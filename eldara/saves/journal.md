@@ -119,3 +119,14 @@ Self-critique: ran clean (self_critique.py passed)
 - continuity_notes: null -> ["Corrected day count after a skipped in-world date on turn 7"]
 - turn: 9 -> 10
 
+
+### Turn 11 — 2026-09-15 22:41 UTC
+
+_Turn 11: npc_relationships reaches soft cap of 10 (regression coverage)_
+
+Self-critique: ran clean (self_critique.py passed)
+
+- commit_token: "10-00f637" -> "11-43e18d"
+- npc_relationships: [{"npc_id": "innkeeper-maren", "name": "Maren", "disposition": "wary but not unkind", "note": "Runs the inn where Chad first woke; gave him the cloak."}] -> [{"npc_id": "innkeeper-maren", "name": "Maren", "disposition": "wary but not unkind", "note": "Runs the inn where Chad first woke; gave him the cloak.", "last_referenced_turn": 11}, {"npc_id": "npc-filler-2", "name": "Filler NPC 2", "disposition": "neutral", "note": "minor background character"}, {"npc_id": "npc-filler-3", "name": "Filler NPC 3", "disposition": "neutral", "note": "minor background character"}, {"npc_id": "npc-filler-4", "name": "Filler NPC 4", "disposition": "neutral", "note": "minor background character"}, {"npc_id": "npc-filler-5", "name": "Filler NPC 5", "disposition": "neutral", "note": "minor background character"}, {"npc_id": "npc-filler-6", "name": "Filler NPC 6", "disposition": "neutral", "note": "minor background character"}, {"npc_id": "npc-filler-7", "name": "Filler NPC 7", "disposition": "neutral", "note": "minor background character"}, {"npc_id": "npc-filler-8", "name": "Filler NPC 8", "disposition": "neutral", "note": "minor background character"}, {"npc_id": "npc-filler-9", "name": "Filler NPC 9", "disposition": "neutral", "note": "minor background character"}, {"npc_id": "npc-filler-10", "name": "Filler NPC 10", "disposition": "neutral", "note": "minor background character"}]
+- turn: 10 -> 11
+

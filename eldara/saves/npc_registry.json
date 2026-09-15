@@ -1,5 +1,32 @@
 {
   "innkeeper-maren": {
     "name": "Maren"
+  },
+  "npc-filler-2": {
+    "name": "Filler NPC 2"
+  },
+  "npc-filler-3": {
+    "name": "Filler NPC 3"
+  },
+  "npc-filler-4": {
+    "name": "Filler NPC 4"
+  },
+  "npc-filler-5": {
+    "name": "Filler NPC 5"
+  },
+  "npc-filler-6": {
+    "name": "Filler NPC 6"
+  },
+  "npc-filler-7": {
+    "name": "Filler NPC 7"
+  },
+  "npc-filler-8": {
+    "name": "Filler NPC 8"
+  },
+  "npc-filler-9": {
+    "name": "Filler NPC 9"
+  },
+  "npc-filler-10": {
+    "name": "Filler NPC 10"
   }
 }

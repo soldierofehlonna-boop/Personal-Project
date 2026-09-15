@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "turn": 10,
+  "turn": 11,
   "in_world_date": {
     "day": 1,
     "month": "Seedmonth",
@@ -59,7 +59,62 @@
       "npc_id": "innkeeper-maren",
       "name": "Maren",
       "disposition": "wary but not unkind",
-      "note": "Runs the inn where Chad first woke; gave him the cloak."
+      "note": "Runs the inn where Chad first woke; gave him the cloak.",
+      "last_referenced_turn": 11
+    },
+    {
+      "npc_id": "npc-filler-2",
+      "name": "Filler NPC 2",
+      "disposition": "neutral",
+      "note": "minor background character"
+    },
+    {
+      "npc_id": "npc-filler-3",
+      "name": "Filler NPC 3",
+      "disposition": "neutral",
+      "note": "minor background character"
+    },
+    {
+      "npc_id": "npc-filler-4",
+      "name": "Filler NPC 4",
+      "disposition": "neutral",
+      "note": "minor background character"
+    },
+    {
+      "npc_id": "npc-filler-5",
+      "name": "Filler NPC 5",
+      "disposition": "neutral",
+      "note": "minor background character"
+    },
+    {
+      "npc_id": "npc-filler-6",
+      "name": "Filler NPC 6",
+      "disposition": "neutral",
+      "note": "minor background character"
+    },
+    {
+      "npc_id": "npc-filler-7",
+      "name": "Filler NPC 7",
+      "disposition": "neutral",
+      "note": "minor background character"
+    },
+    {
+      "npc_id": "npc-filler-8",
+      "name": "Filler NPC 8",
+      "disposition": "neutral",
+      "note": "minor background character"
+    },
+    {
+      "npc_id": "npc-filler-9",
+      "name": "Filler NPC 9",
+      "disposition": "neutral",
+      "note": "minor background character"
+    },
+    {
+      "npc_id": "npc-filler-10",
+      "name": "Filler NPC 10",
+      "disposition": "neutral",
+      "note": "minor background character"
     }
   ],
   "open_threads": [
@@ -83,5 +138,5 @@
   "continuity_notes": [
     "Corrected day count after a skipped in-world date on turn 7"
   ],
-  "commit_token": "10-00f637"
+  "commit_token": "11-43e18d"
 }
