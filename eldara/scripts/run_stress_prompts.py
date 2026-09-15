@@ -91,7 +91,28 @@ def make_campaign_copy():
     return dest
 
 
-def run_case(case, model, effort, timeout, permission_mode, instructions_path):
+def seed_campaign(workdir):
+    """Play earn_clean_slate.py's eleven turns into a copy before testing.
+
+    Three of the five cases assume a campaign with history -- "what Maren
+    said last week", "npc_relationships is full", "eleven days since".
+    Against a turn-0 save the correct answer to all of them is "none of
+    this was ever established", which is right but short-circuits the
+    failure mode being probed: the prune-advisor case never has to choose
+    between running the advisor and free-recalling, because there is
+    nothing to prune. Seeding gives it something to be wrong about.
+
+    earn_clean_slate.py commits eleven real turns through the real
+    pipeline and leaves npc_relationships at its soft cap of 10, so the
+    "full" in that prompt becomes true rather than hypothetical.
+    """
+    proc = subprocess.run([sys.executable, "scripts/earn_clean_slate.py"],
+                          cwd=workdir, capture_output=True, text=True, timeout=600)
+    return proc.returncode == 0, (proc.stdout + proc.stderr)[-400:]
+
+
+def run_case(case, model, effort, timeout, permission_mode, instructions_path,
+             seed=False):
     """One case, one fresh session, one fresh campaign copy.
 
     The copy is per-case on purpose. Sharing one copy across the run would
@@ -103,6 +124,12 @@ def run_case(case, model, effort, timeout, permission_mode, instructions_path):
     than a decision. Each case gets the same turn-0 baseline instead.
     """
     workdir = make_campaign_copy()
+    seed_note = None
+    if seed:
+        ok, tail = seed_campaign(workdir)
+        seed_note = "seeded" if ok else f"seeding FAILED: {tail}"
+    # Captured after seeding, so the retention check below compares against
+    # the state the session was actually handed.
     start_turn = campaign_turn(workdir)
     system_prompt = instructions_path.read_text(encoding="utf-8")
     cmd = ["claude", "-p", case["prompt"] + STATE_ASK,
@@ -134,6 +161,7 @@ def run_case(case, model, effort, timeout, permission_mode, instructions_path):
     return {
         "case_id": case["id"],
         "campaign_copy": str(workdir) if retained else "(unchanged, removed)",
+        "seeded": seed_note,
         "copy_start_turn": start_turn,
         "copy_end_turn": end_turn,
         "prompt_sent": case["prompt"] + STATE_ASK,
@@ -191,6 +219,10 @@ def write_transcript(out_path, label, model, effort, results, instructions_path)
         f"- Model: `{model}`" + (f", effort `{effort}`" if effort else ""),
         f"- Cases recorded: {len(results)}",
         f"- Instructions: `{instructions_path}`",
+        "- Campaign: " + ("seeded with earn_clean_slate.py's eleven turns before each "
+                          "case, so npc_relationships is at its cap and the journal has "
+                          "history" if any(r.get("seeded") for r in results)
+                          else "baseline at turn 0"),
         "- Each case ran against its own fresh copy of the campaign at turn 0, so no",
         "  case could be affected by what an earlier one committed.",
         "",
@@ -236,6 +268,12 @@ def main():
                              "asked, which is enough to read the campaign. Set this "
                              "only if you want the session able to commit inside the "
                              "throwaway copy.")
+    parser.add_argument("--seed", action="store_true",
+                        help="Play earn_clean_slate.py's eleven turns into each "
+                             "campaign copy first, so the cases that assume campaign "
+                             "history (a full npc_relationships, a populated journal) "
+                             "test what they were written to test instead of being "
+                             "answerable with \"nothing was ever established\".")
     parser.add_argument("--instructions", metavar="PATH",
                         help="Use a different GM_INSTRUCTIONS.md, so one label can be "
                              "compared against another. To test a previous revision: "
@@ -262,6 +300,9 @@ def main():
         EXPORTS_DIR / f"stress_transcript_{args.label}.md")
 
     if args.dry_run:
+        if args.seed:
+            print("Each copy would first be seeded with earn_clean_slate.py's "
+                  "eleven turns.")
         print(f"Would run {len(cases)} case(s) as `claude -p`, model={args.model}"
               + (f", effort={args.effort}" if args.effort else "")
               + f", timeout={args.timeout}s each.")
@@ -286,7 +327,7 @@ def main():
     for i, case in enumerate(cases, start=1):
         print(f"-- {i}/{len(cases)}: {case['id']} ... ", end="", flush=True)
         r = run_case(case, args.model, args.effort, args.timeout,
-                     args.permission_mode, instructions_path)
+                     args.permission_mode, instructions_path, args.seed)
         state = "ok" if r["exit_code"] == 0 else f"exit {r['exit_code']}"
         print(f"{state}, {r['seconds']}s, {len(r['response'])} chars")
 
