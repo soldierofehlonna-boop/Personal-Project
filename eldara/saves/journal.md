@@ -9,10 +9,10 @@ Add a freeform note alongside a state commit via
 
 ### Turn 1 — 2026-09-15 22:40 UTC
 
-_[stress-test:metonymy-evasion] metonymic gear reference with no gear entry added_
+_[stress-test:currency-proximity-evasion] currency word and 'gear' present but far apart_
 
 Self-critique: ran clean (self_critique.py passed)
 
-- commit_token: null -> "1-32c56a"
+- commit_token: null -> "1-a25bd7"
 - turn: 0 -> 1
 
