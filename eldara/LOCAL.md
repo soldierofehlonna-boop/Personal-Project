@@ -49,10 +49,9 @@ git init
 git add -A
 git commit -m "Initial commit: current state of the project"
 ```
-Check `git status` before that first `git add -A` -- `.gitignore` already
-excludes the real credential file (`ntfy_config.json`) by name, but it's
-worth a glance to confirm it's not about to be swept into the project's
-very first commit.
+Check `git status` before that first `git add -A` -- worth a glance to
+confirm nothing unexpected is about to be swept into the project's very
+first commit.
 
 Then create a repository on GitHub (private is the sensible default here,
 given this project contains a personal backstory document and full
@@ -121,15 +120,11 @@ boundary.
   and `--skip-critique` all work as documented in `scripts/commit_state.py`.
 - **Run the audit yourself, at the start or end of a session:**
   ```
-  python3 scripts/session.py cron manual-checklist
-  ```
-  prints the one command worth running once per session:
-  ```
-  python3 scripts/scheduled_audit.py
+  python3 scripts/session.py audit
   ```
   A recurring reminder in Apple Reminders (or whatever reminder app you
-  use), set to your own playing cadence, is a reasonable stand-in for a
-  cron job neither connection mode can promise to run unattended.
+  use), set to your own playing cadence, is a reasonable way to remember
+  to do this regularly.
 
 ## Security basics
 
@@ -148,14 +143,3 @@ boundary.
 - Do a low-stakes test (connect, run `git status` or `ls`, disconnect)
   the first time you set up either Remote Control or a Cloud Session
   against this repository, before trusting it with a real turn commit.
-
-## Alerts
-
-`ntfy_config.json`'s push-notification path works the same way regardless
-of which connection mode committed the turn that triggered it.
-Claude Code's own Remote Control mode can also send its own push
-notifications for long-running tasks or decisions it needs from you (see
-Claude Code's own mobile documentation) -- that's a separate, complementary
-channel to ntfy's audit alerts, not a replacement for it; the two serve
-different purposes (a finished/blocked Claude Code task vs. a flagged
-playtest audit) and can both be left enabled at once.

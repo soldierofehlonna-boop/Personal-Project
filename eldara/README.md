@@ -86,7 +86,6 @@ choice, and `prompts/FIRST_MESSAGE.md` if this is a brand-new campaign.
 | `docs/MODEL_NOTES.md` | Notes on running this with different LLMs. |
 | `docs/lore_keywords.json` | Keyword → lore-section mapping backing `scripts/world_info_lookup.py`. Data, not code — add a new keyword here rather than editing the script. |
 | `state_schema.json` | The schema `saves/current.json` is validated against. |
-| `ntfy_config.example.json` | Template for push-notification config used by the scheduled audit (see `scripts/notify_ntfy.py`). Copy to `ntfy_config.json`, fill in real values — never commit that copy. |
 | `saves/current.json` | The single source of truth for Chad's current state. |
 | `saves/journal.md` | Auto-generated, mechanical log of state changes over time. |
 | `saves/npc_registry.json` | Permanent record of every NPC id ever assigned, so identity survives pruning. Also holds a last-known snapshot (disposition, note, last-referenced turn) for any NPC pruned from `current.json`'s capped working set — Eldara's answer to Auferet's Character Library still remembering someone who's out of the spotlight. |

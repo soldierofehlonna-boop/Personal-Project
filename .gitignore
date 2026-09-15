@@ -28,16 +28,6 @@ eldara/saves/backups/*.json
 eldara/saves/exports/*.json
 !eldara/saves/exports/.gitkeep
 
-# Rotated audit logs -- the live saves/audit_log.md is small and fine to
-# track, but its rotated-out predecessor can be large; not worth keeping
-# in git history.
-eldara/saves/audit_log.md.1
-
-# ntfy push-notification config -- real values only, never commit these
-# (the topic name is an unauthenticated shared secret). See
-# eldara/ntfy_config.example.json for the template.
-eldara/ntfy_config.json
-
 # Any private key that ends up in the repo directory by mistake (SSH,
 # TLS, or otherwise) -- shouldn't live here, but excluded as a safety net.
 *.pem

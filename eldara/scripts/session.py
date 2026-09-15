@@ -103,22 +103,6 @@ Subcommands:
                                           only when someone remembers to
                                           ask. Exits on an empty input.
 
-    python3 scripts/session.py cron manual-checklist
-                                          Prints the one command worth
-                                          running once per session (or once
-                                          a day if you play multiple
-                                          sessions daily). This replaces a
-                                          real unattended cron job, which
-                                          neither a Remote Control session's
-                                          host computer nor a Cloud
-                                          Session's runtime is guaranteed
-                                          to provide -- see LOCAL.md's
-                                          "No unattended automation"
-                                          section for why. Safe to run
-                                          directly, any time, with no setup
-                                          beyond what's already documented
-                                          for it.
-
 Typical usage in a Claude Code session (Claude PC, or Claude iOS via
 Remote Control or a Cloud Session -- see LOCAL.md):
     git clone <repo-url> eldara_new && cd eldara_new
@@ -296,43 +280,6 @@ def cmd_setup(_args):
     print("offer stops appearing and earn-coverage also refuses to run on its")
     print("own. The safer habit either way is to only ever run it against a")
     print("throwaway clone, never the campaign you actually intend to play.")
-    return 0
-
-
-# ---------------------------------------------------------------------------
-# cron
-# ---------------------------------------------------------------------------
-
-def cmd_cron(_args):
-    # Real unattended cron doesn't apply here: this project runs inside a
-    # Claude Code session (Claude PC directly, or Claude iOS via Remote
-    # Control or a Cloud Session -- see LOCAL.md), and neither a Remote
-    # Control session's host computer nor a Cloud Session's runtime is
-    # guaranteed to stay available indefinitely. A crontab entry would
-    # only fire while a session happened to already be active, which
-    # defeats the point of scheduling it at all. This subcommand only
-    # ever prints the manual-checklist replacement, rather than
-    # pretending an 'install' action would do something real.
-    print("Manual checklist -- run this once per session (or once a")
-    print("day if you play multiple sessions daily), since this project's")
-    print("session can't reliably run anything unattended in the background")
-    print("(see LOCAL.md's \"No unattended automation\" section for why):\n")
-    print("  python3 scripts/scheduled_audit.py")
-    print()
-    print("This wraps the full playtest audit with log rotation to")
-    print("saves/audit_log.md and a quieter one-line entry for a clean")
-    print("run. Safe to run directly, any time, with no cron setup at all.")
-    print()
-    print("Separately, if you ever suspect the commit/validation pipeline")
-    print("itself is broken (not the campaign's content, the tooling), the")
-    print("real regression check is:")
-    print("  python3 scripts/session.py audit")
-    print("(Pass 2 of that is a fully self-contained adversarial suite --")
-    print("no campaign data needed.) 'earn-coverage' is a one-time, opt-in")
-    print("tool for a fresh throwaway campaign, not a recurring check --")
-    print("see 'python3 scripts/session.py earn-coverage --help' via --help")
-    print("above; it is deliberately not part of this checklist since it")
-    print("commits real turns and must never run against real campaign data.")
     return 0
 
 
@@ -699,8 +646,6 @@ def main():
                                 "by default since it's out-of-character and not "
                                 "meant to be shared.")
 
-    sub.add_parser("cron", help="Print the manual-run checklist that replaces unattended cron in a Claude Code session.")
-
     args = parser.parse_args()
 
     dispatch = {
@@ -713,7 +658,6 @@ def main():
         "earn-coverage": cmd_earn_coverage,
         "loop": cmd_loop,
         "export": cmd_export,
-        "cron": cmd_cron,
     }
     sys.exit(dispatch[args.command](args))
 
