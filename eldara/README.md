@@ -76,11 +76,12 @@ choice, and `prompts/FIRST_MESSAGE.md` if this is a brand-new campaign.
 | `docs/OPERATING.md` | How the tooling actually fits together, and why narration stays external. |
 | `docs/RECOVERY.md` | What to do if state gets corrupted or a hard rule is broken mid-session. |
 | `docs/MODEL_NOTES.md` | Notes on running this with different LLMs. |
+| `docs/lore_keywords.json` | Keyword → lore-section mapping backing `scripts/world_info_lookup.py`. Data, not code — add a new keyword here rather than editing the script. |
 | `state_schema.json` | The schema `saves/current.json` is validated against. |
 | `ntfy_config.example.json` | Template for push-notification config used by the scheduled audit (see `scripts/notify_ntfy.py`). Copy to `ntfy_config.json`, fill in real values — never commit that copy. |
 | `saves/current.json` | The single source of truth for Chad's current state. |
 | `saves/journal.md` | Auto-generated, mechanical log of state changes over time. |
-| `saves/npc_registry.json` | Permanent record of every NPC id ever assigned, so identity survives pruning. |
+| `saves/npc_registry.json` | Permanent record of every NPC id ever assigned, so identity survives pruning. Also holds a last-known snapshot (disposition, note, last-referenced turn) for any NPC pruned from `current.json`'s capped working set — Eldara's answer to Auferet's Character Library still remembering someone who's out of the spotlight. |
 | `saves/pinned_facts.json` | Short, load-bearing "never forget" facts (Auferet's pinned-facts idea), hard-checked against every drafted turn by `scripts/lore_consistency_check.py`. Add to it during play as new facts get established. |
 | `saves/locations.json` | Fixed places and pairwise travel durations, sourced from `docs/ELDARA_REFERENCE.md` §2.8/§2.3. Backs `current_location`/`travel` in `saves/current.json` and `scripts/location_lookup.py`. |
 | `saves/player_notes.md` | Out-of-character preferences (pacing, tone, content limits) — never narrated. |
