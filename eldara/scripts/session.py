@@ -155,6 +155,18 @@ def run(args, **kwargs):
     return result.returncode
 
 
+def git_dir():
+    """Resolve the actual .git directory for ROOT, wherever it lives --
+    ROOT need not be the repo's top level (e.g. a project nested a
+    subdirectory into a larger repo), so this can't just assume
+    ROOT / ".git" exists. Returns None if ROOT isn't inside a git repo."""
+    result = subprocess.run(["git", "rev-parse", "--absolute-git-dir"],
+                             cwd=ROOT, capture_output=True, text=True)
+    if result.returncode != 0:
+        return None
+    return Path(result.stdout.strip())
+
+
 # ---------------------------------------------------------------------------
 # check
 # ---------------------------------------------------------------------------
@@ -173,12 +185,11 @@ def cmd_check(_args):
     print(f"  git on PATH: {'yes' if git_present else 'NO -- required for the commit pipeline'}")
     ok = ok and git_present
     if git_present:
-        result = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"],
-                                 cwd=ROOT, capture_output=True, text=True)
-        is_repo = result.returncode == 0
+        gdir = git_dir()
+        is_repo = gdir is not None
         print(f"  this directory is a git repo: {'yes' if is_repo else 'no -- run: git init'}")
         if is_repo:
-            hook_path = ROOT / ".git" / "hooks" / "pre-commit"
+            hook_path = gdir / "hooks" / "pre-commit"
             installed = hook_path.exists() and "validate_state" in hook_path.read_text(encoding="utf-8")
             print(f"  pre-commit hook installed: {'yes' if installed else 'no -- run: python3 scripts/session.py setup'}")
 
@@ -245,9 +256,9 @@ def cmd_setup(_args):
         print("  No requirements.txt found; skipping.")
 
     print("\n-- Git hooks --")
-    git_dir = ROOT / ".git"
-    if git_dir.exists():
-        hooks_dir = git_dir / "hooks"
+    gdir = git_dir()
+    if gdir is not None:
+        hooks_dir = gdir / "hooks"
         hooks_dir.mkdir(exist_ok=True)
         for hook_name in ("pre-commit", "pre-push"):
             src = SCRIPTS / "git-hooks" / hook_name
