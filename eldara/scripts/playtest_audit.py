@@ -245,6 +245,30 @@ def pass2_adversarial(tmp_dir):
         ok, detail = False, f"could not import find_registered_npc_id: {e}"
     results.append(("npc_id registry lookup resolves one NPC across case and whitespace", ok, detail))
 
+    # 2d. self_critique.py must treat a named possessor on the player
+    #     character as the inventory claim it is. "Chad's sword" makes
+    #     exactly the claim "his sword" makes, and passed clean until it
+    #     was measured.
+    named_path = tmp_dir / "narration_named_possessor.txt"
+    named_path.write_text("He drew Chad's sword and stepped forward.\n", encoding="utf-8")
+    code2d, out2d = run_script(["scripts/self_critique.py", str(named_path)])
+    ok = (code2d != 0) and "sword" in out2d
+    results.append(("self_critique.py flags a named possessor on the player character", ok, out2d))
+
+    # 2e. ...and must NOT read another character's possessive as Chad's
+    #     gear. Armed NPCs carry weapons through most scenes, and an
+    #     earlier revision of the semantic advisory anchored its named
+    #     pattern to any capitalised word, so "Maren's dagger" was
+    #     reported as a possible unlisted item of Chad's. That defect
+    #     changed no exit code, so only the advisory text reveals it --
+    #     which is what this asserts on. With WordNet absent the advisory
+    #     cannot fire at all and the check passes for the right reason.
+    npc_path = tmp_dir / "narration_npc_possessor.txt"
+    npc_path.write_text("Maren's dagger caught the light.\n", encoding="utf-8")
+    code2e, out2e = run_script(["scripts/self_critique.py", str(npc_path)])
+    ok = (code2e == 0) and "unlisted carried item" not in out2e
+    results.append(("self_critique.py ignores another character's possessive", ok, out2e))
+
     # 3. validate_state.py must reject currency-as-gear.
     bad3 = json.loads(json.dumps(base))
     bad3["gear"] = bad3.get("gear", []) + [{"name": "gold"}]

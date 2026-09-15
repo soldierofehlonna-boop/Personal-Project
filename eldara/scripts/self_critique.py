@@ -104,6 +104,15 @@ def normalize_quotes(text):
     )
 
 
+# The player character's name, for possession shapes that name him
+# instead of using a pronoun ("Chad's sword"). Deliberately not read from
+# saves/current.json, which has no name field -- and duplicated as
+# PLAYER_NAME in scripts/semantic_gear_check.py rather than imported,
+# so the hard check below still works when that optional module is
+# absent. Renaming the PC means changing both.
+PLAYER_NAME = "Chad"
+
+
 def check_invented_gear(text, state):
     known_names = {g.get("name", "").lower() for g in state.get("gear", [])}
     flags = []
@@ -155,10 +164,29 @@ def check_invented_gear(text, state):
         # missing a genuine inventory violation, but it will happen.
         nested_possessive = re.search(rf"\bhis \w+'s {word}\b", text, re.IGNORECASE)
 
-        if direct or widened or nested_possessive:
+        # Named possessor: "Chad's sword" makes exactly the same
+        # inventory claim as "his sword" and used to pass this check
+        # clean, because every pattern above requires the pronoun.
+        #
+        # Restricted to the player character on purpose. A general
+        # "\b[A-Z]\w+'s {word}\b" would flag "Maren's dagger" and "the
+        # guard's sword" -- other people's weapons, which armed NPCs
+        # carry through most scenes and which say nothing about Chad's
+        # gear. Precision here comes from the same place the pronoun
+        # patterns get it: WEAPON_WORDS does the filtering, so
+        # "Chad's sword" can flag while "Chad's patience" never can.
+        named_possessor = re.search(
+            rf"\b{PLAYER_NAME}'s(?:\s+\w+){{0,3}}\s*{word}\b", text, re.IGNORECASE)
+        named_nested = re.search(
+            rf"\b{PLAYER_NAME}'s \w+'s {word}\b", text, re.IGNORECASE)
+
+        if direct or widened or nested_possessive or named_possessor or named_nested:
             key = word
             if key not in seen:
-                flags.append(f"mentions '...his ... {word}' but no gear entry matches '{word}'")
+                possessor = "his" if (direct or widened or nested_possessive) \
+                    else f"{PLAYER_NAME}'s"
+                flags.append(
+                    f"mentions '...{possessor} ... {word}' but no gear entry matches '{word}'")
                 seen.add(key)
     return flags
 

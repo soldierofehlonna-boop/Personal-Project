@@ -228,14 +228,27 @@ def advisory_item_notices(text, gear_names):
     return notices
 
 
-# Possession shapes, deliberately the same ones self_critique.py already
-# matches -- plus a named possessor, which it currently misses entirely
-# ("Chad's sword" passes its check clean).
+# The player character, for the named-possession shapes below. Duplicated
+# from self_critique.py's PLAYER_NAME rather than imported, so this module
+# stays standalone; renaming the PC means changing both.
+PLAYER_NAME = "Chad"
+
+# Possession shapes, deliberately the same ones self_critique.py matches.
+#
+# The named-possessor shapes are anchored to PLAYER_NAME, not to any
+# capitalised word. An earlier revision used r"\b[A-Z]\w+'s\s+(\w+)\b"
+# and consequently reported "Maren's dagger" and "the guard's sword" as
+# possible unlisted items of Chad's -- other people's weapons, which
+# armed NPCs carry through most scenes. That was a real false-positive
+# class, found only by testing NPC possessives, and it is the most likely
+# one to occur in actual play.
 POSSESSIVE_PATTERNS = [
     r"\bhis\s+(\w+)\b",
     r"\bhis(?:\s+\w+){1,3}\s+(\w+)\b",
     r"\bhis\s+\w+'s\s+(\w+)\b",
-    r"\b[A-Z]\w+'s\s+(\w+)\b",
+    rf"\b{PLAYER_NAME}'s\s+(\w+)\b",
+    rf"\b{PLAYER_NAME}'s(?:\s+\w+){{1,3}}\s+(\w+)\b",
+    rf"\b{PLAYER_NAME}'s\s+\w+'s\s+(\w+)\b",
 ]
 
 
