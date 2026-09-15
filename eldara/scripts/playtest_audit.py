@@ -170,7 +170,13 @@ def pass2_adversarial(tmp_dir):
 
     results = []
 
-    # 1. turn_gate.py must pass a turn with no marker at all.
+    # Checks are identified by their printed label, not by position: the
+    # suite counts itself, and nothing here depends on ordering. Append or
+    # insert freely -- deliberately un-numbered so that two branches each
+    # adding a check don't produce comments that disagree with reality
+    # even when the text merges without conflict.
+
+    # turn_gate.py must pass a turn with no marker at all.
     code, out = run_script(["scripts/turn_gate.py"], input_text="Chad walks on. No state change here.")
     ok = "no commit required" in out.lower() or code == 0
     results.append(("turn_gate.py passes a turn with no STATE_CHANGE marker", ok, out))
@@ -183,7 +189,7 @@ def pass2_adversarial(tmp_dir):
     inspected = "saves/current.json" in out or "PASS" in out or "FAIL" in out
     results.append(("turn_gate.py actually inspects saves/current.json before deciding", inspected, out))
 
-    # 2. validate_state.py must reject an is_new_npc conflict.
+    # validate_state.py must reject an is_new_npc conflict.
     try:
         base = load_json_as_dict(CURRENT_PATH) if CURRENT_PATH.exists() else None
     except (json.JSONDecodeError, OSError, ValueError, RecursionError) as e:
@@ -203,7 +209,7 @@ def pass2_adversarial(tmp_dir):
     ok = (code2 != 0) and "is_new_npc" in out2
     results.append(("validate_state.py rejects is_new_npc=false for an unregistered id", ok, out2))
 
-    # 2b. validate_state.py must reject two npc_ids that differ only by
+    # validate_state.py must reject two npc_ids that differ only by
     #     case. Adversarial testing found both accepted as distinct new
     #     NPCs, because npc_id was the one identifier still compared as
     #     an exact string while gear names and thread text were already
@@ -222,7 +228,7 @@ def pass2_adversarial(tmp_dir):
     ok = (code2c != 0) and "differing only by case" in out2c
     results.append(("validate_state.py rejects two npc_ids differing only by case", ok, out2c))
 
-    # 2c. The registry lookup behind that rejection must resolve an id
+    # The registry lookup behind that rejection must resolve an id
     #     across case, checked directly rather than through a commit.
     #     validate_state.py blocks two variants inside ONE state, but a
     #     variant of an id registered on an EARLIER turn passes
@@ -245,7 +251,7 @@ def pass2_adversarial(tmp_dir):
         ok, detail = False, f"could not import find_registered_npc_id: {e}"
     results.append(("npc_id registry lookup resolves one NPC across case and whitespace", ok, detail))
 
-    # 2d. self_critique.py must treat a named possessor on the player
+    # self_critique.py must treat a named possessor on the player
     #     character as the inventory claim it is. "Chad's sword" makes
     #     exactly the claim "his sword" makes, and passed clean until it
     #     was measured.
@@ -255,7 +261,7 @@ def pass2_adversarial(tmp_dir):
     ok = (code2d != 0) and "sword" in out2d
     results.append(("self_critique.py flags a named possessor on the player character", ok, out2d))
 
-    # 2e. ...and must NOT read another character's possessive as Chad's
+    # ...and must NOT read another character's possessive as Chad's
     #     gear. Armed NPCs carry weapons through most scenes, and an
     #     earlier revision of the semantic advisory anchored its named
     #     pattern to any capitalised word, so "Maren's dagger" was
@@ -269,7 +275,7 @@ def pass2_adversarial(tmp_dir):
     ok = (code2e == 0) and "unlisted carried item" not in out2e
     results.append(("self_critique.py ignores another character's possessive", ok, out2e))
 
-    # 3. validate_state.py must reject currency-as-gear.
+    # validate_state.py must reject currency-as-gear.
     bad3 = json.loads(json.dumps(base))
     bad3["gear"] = bad3.get("gear", []) + [{"name": "gold"}]
     bad3_path = tmp_dir / "bad_currency_gear.json"
@@ -278,7 +284,7 @@ def pass2_adversarial(tmp_dir):
     ok = (code3 != 0) and "currency" in out3.lower()
     results.append(("validate_state.py rejects a currency word disguised as gear", ok, out3))
 
-    # 4. validate_state.py must reject an over-cap array.
+    # validate_state.py must reject an over-cap array.
     bad4 = json.loads(json.dumps(base))
     bad4["open_threads"] = [{"text": f"thread {i}", "added_turn": 0} for i in range(9)]
     bad4_path = tmp_dir / "bad_overcap.json"
@@ -287,7 +293,7 @@ def pass2_adversarial(tmp_dir):
     ok = (code4 != 0) and "soft cap" in out4.lower()
     results.append(("validate_state.py rejects open_threads exceeding its soft cap", ok, out4))
 
-    # 5. validate_state.py must WARN (not necessarily fail) on a lapsed active deadline.
+    # validate_state.py must WARN (not necessarily fail) on a lapsed active deadline.
     bad5 = json.loads(json.dumps(base))
     bad5["turn"] = 50
     bad5["open_threads"] = [{"text": "an old promise", "added_turn": 1, "active": True, "deadline_turn": 10}]
@@ -297,7 +303,7 @@ def pass2_adversarial(tmp_dir):
     ok = "lapsed active deadline" in out5.lower() or "warning" in out5.lower()
     results.append(("validate_state.py warns on a lapsed active deadline", ok, out5))
 
-    # 6. prune_advisor.py must run without crashing and must print the
+    # prune_advisor.py must run without crashing and must print the
     #    "confirm or override" caveat -- we do NOT assert its ranking
     #    quality here, since it's a known-naive heuristic; this only
     #    checks the tool still runs and still carries the caveat forward.
@@ -305,7 +311,7 @@ def pass2_adversarial(tmp_dir):
     ok = "confirm or override" in out6.lower() or "empty" in out6.lower()
     results.append(("prune_advisor.py runs and still carries its non-authoritative caveat", ok, out6))
 
-    # 7. commit_state.py must not desync saves/current.json from git
+    # commit_state.py must not desync saves/current.json from git
     #    history when a turn introduces a new NPC. Regression test for a
     #    real bug found in testing: update_npc_registry() used to run
     #    (and register the new npc_id) BEFORE the pre-commit hook

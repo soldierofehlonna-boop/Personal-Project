@@ -32,17 +32,17 @@ Cases in TOOLING_CASES are pure data -- fixed, hand-authored JSON/text
 fed straight to the scripts. These run identically regardless of model
 or effort, fully automatically, because no model is involved.
 
-Cases in GM_PROMPT_CASES are different: they need an actual model to
+Cases in GM_STRESS_PROMPTS are different: they need an actual model to
 draft a response to an adversarial prompt before there's anything to
 feed the pipeline. This script cannot reach into your Claude iOS /
 Claude Code session and drive it -- that's a live chat interface, not
 something a script elsewhere can call. There are exactly two honest ways
 to run this half:
 
-1. MANUAL (--list-gm-cases / --submit-gm-case, no key needed): paste
+1. MANUAL (--list-stress-prompts / --submit-stress-prompt, no key needed): paste
    each prompt into your actual Claude Code session yourself at the
    setting under test, save what it drafts, feed the two files to
-   --submit-gm-case. This is the only way to test the REAL session
+   --submit-stress-prompt. This is the only way to test the REAL session
    you'll actually play with (iOS app, Remote Control, whatever you use
    day to day) rather than a stand-in for it.
 2. AUTOMATIC (--auto-gm, needs ANTHROPIC_API_KEY): this script calls the
@@ -73,7 +73,7 @@ USAGE
     python3 scripts/adversarial_stress_test.py --run-all-auto \\
         --labels "opus5-medium,opus5-high" \\
         --model claude-opus-5 --efforts "medium,high"
-        # Fully automatic: runs tooling cases once, runs every GM_PROMPT_CASES
+        # Fully automatic: runs tooling cases once, runs every GM_STRESS_PROMPTS
         # prompt through the real API at each named effort level (requires
         # ANTHROPIC_API_KEY), feeds every response through the real pipeline,
         # writes one report per label, then prints a full comparison.
@@ -87,11 +87,11 @@ USAGE
         --label "opus5-medium" --model claude-opus-5 --effort medium
         # GM-facing cases only, automatically, via the real API.
 
-    python3 scripts/adversarial_stress_test.py --list-gm-cases
-        # Prints the GM_PROMPT_CASES prompts to paste into a live session
+    python3 scripts/adversarial_stress_test.py --list-stress-prompts
+        # Prints the GM_STRESS_PROMPTS prompts to paste into a live session
         # by hand instead (no API key needed; see mode 1 above).
 
-    python3 scripts/adversarial_stress_test.py --submit-gm-case CASE_ID \\
+    python3 scripts/adversarial_stress_test.py --submit-stress-prompt CASE_ID \\
         --label "opus5-medium" --state-file /tmp/drafted_state.json \\
         --narration-file /tmp/drafted_narration.txt
         # Feeds one manually-drafted response through the real pipeline.
@@ -213,7 +213,7 @@ def build_campaign_context():
     This is a stand-in for file access, not a replacement for it. Read a
     case that passes here as "passed with the save state handed to it",
     not "passed the way a live session would" -- the manual
-    --submit-gm-case path remains the only one testing a GM that can
+    --submit-stress-prompt path remains the only one testing a GM that can
     actually run the scripts.
     """
     parts = []
@@ -371,14 +371,14 @@ def build_tooling_cases(base_state):
 
 
 # ---------------------------------------------------------------------------
-# GM_PROMPT_CASES: prompts for a live GM session. These need an actual model
+# GM_STRESS_PROMPTS: prompts for a live GM session. These need an actual model
 # in the loop and are the real point of comparing Setting A vs Setting B --
 # they test whether the MODEL, not the mechanical checks, holds up under
 # adversarial pressure at a given effort level. Run identically at both
 # settings and compare what gets drafted before it ever reaches validation.
 # ---------------------------------------------------------------------------
 
-GM_PROMPT_CASES = [
+GM_STRESS_PROMPTS = [
     {
         "id": "pressure-to-invent-gear",
         "prompt": (
@@ -531,7 +531,7 @@ def write_report(label, section, results):
     existing.setdefault("label", label)
     existing.setdefault("sections", {})
 
-    # Upsert by case_id rather than replacing the section. --submit-gm-case
+    # Upsert by case_id rather than replacing the section. --submit-stress-prompt
     # writes one result at a time, and the documented manual workflow is to
     # feed each GM case to it in turn under one label -- which, with a
     # wholesale replace, silently erased every earlier case and left a
@@ -552,10 +552,10 @@ def write_report(label, section, results):
     print(f"\nReport written/updated: {report_path.relative_to(ROOT)}")
 
 
-def submit_gm_case(case_id, label, state_file, narration_file):
-    case = next((c for c in GM_PROMPT_CASES if c["id"] == case_id), None)
+def submit_stress_prompt(case_id, label, state_file, narration_file):
+    case = next((c for c in GM_STRESS_PROMPTS if c["id"] == case_id), None)
     if case is None:
-        print(f"Unknown case id '{case_id}'. Use --list-gm-cases to see valid ids.")
+        print(f"Unknown case id '{case_id}'. Use --list-stress-prompts to see valid ids.")
         return 1
 
     state_path = Path(state_file)
@@ -701,7 +701,7 @@ def extract_state_and_narration(response_text):
     return state, narration, None
 
 
-def run_gm_case_auto(case, model, effort, api_key):
+def run_gm_stress_prompt_auto(case, model, effort, api_key):
     ask = (
         f"{case['prompt']}\n\n"
         "Draft the resulting proposed state as a complete JSON object "
@@ -781,7 +781,7 @@ def auto_gm(label, model, effort, api_key):
     if not api_key:
         print("--auto-gm requires an API key. Pass --api-key or set "
               "ANTHROPIC_API_KEY. Falling back to manual mode instead: "
-              "see --list-gm-cases / --submit-gm-case.")
+              "see --list-stress-prompts / --submit-stress-prompt.")
         return 1
 
     state = load_current()
@@ -804,11 +804,11 @@ def auto_gm(label, model, effort, api_key):
 
     baseline = snapshot_campaign()
     results = []
-    print(f"Running {len(GM_PROMPT_CASES)} GM-facing cases automatically "
+    print(f"Running {len(GM_STRESS_PROMPTS)} GM-facing cases automatically "
           f"via the real API -- model={model}, effort={effort}, label={label!r}.\n")
-    for i, case in enumerate(GM_PROMPT_CASES, start=1):
-        print(f"-- GM case {i}/{len(GM_PROMPT_CASES)}: {case['id']} --")
-        result = run_gm_case_auto(case, model, effort, api_key)
+    for i, case in enumerate(GM_STRESS_PROMPTS, start=1):
+        print(f"-- GM case {i}/{len(GM_STRESS_PROMPTS)}: {case['id']} --")
+        result = run_gm_stress_prompt_auto(case, model, effort, api_key)
         if result.get("call_error"):
             print(f"   API CALL FAILED: {result['call_error']}")
         elif result.get("refused"):
@@ -872,11 +872,11 @@ def run_all_auto(labels, model, efforts, api_key, dry_run):
     return 0
 
 
-def list_gm_cases():
-    print(f"{len(GM_PROMPT_CASES)} GM-facing adversarial prompts. Run each one "
+def list_stress_prompts():
+    print(f"{len(GM_STRESS_PROMPTS)} GM-facing adversarial prompts. Run each one "
           "in a live Claude Code session at the setting under test, save what "
-          "gets drafted, then feed it to --submit-gm-case.\n")
-    for case in GM_PROMPT_CASES:
+          "gets drafted, then feed it to --submit-stress-prompt.\n")
+    for case in GM_STRESS_PROMPTS:
         print(f"id: {case['id']}")
         print(f"  prompt: {case['prompt']}")
         print(f"  watch for: {case['watch_for']}\n")
@@ -944,18 +944,18 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                       formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--run-tooling-cases", action="store_true")
-    parser.add_argument("--list-gm-cases", action="store_true")
-    parser.add_argument("--submit-gm-case", metavar="CASE_ID")
+    parser.add_argument("--list-stress-prompts", action="store_true")
+    parser.add_argument("--submit-stress-prompt", metavar="CASE_ID")
     parser.add_argument("--state-file")
     parser.add_argument("--narration-file")
     parser.add_argument("--compare", nargs=2, metavar=("LABEL_A", "LABEL_B"))
     parser.add_argument("--label", default="unlabeled",
                          help="Tag this run so two settings' results don't overwrite each other.")
     parser.add_argument("--auto-gm", action="store_true",
-                         help="Run GM_PROMPT_CASES automatically via the real Anthropic API. "
+                         help="Run GM_STRESS_PROMPTS automatically via the real Anthropic API. "
                               "Requires --api-key or ANTHROPIC_API_KEY. See the module docstring "
                               "for why this is a different (not strictly better) test than the "
-                              "manual --submit-gm-case path.")
+                              "manual --submit-stress-prompt path.")
     parser.add_argument("--run-all-auto", action="store_true",
                          help="Full pipeline: tooling cases + auto-gm for every label/effort pair, "
                               "then compare. Requires an API key. This is the 'just do it end to "
@@ -977,18 +977,18 @@ def main():
     args = parser.parse_args()
     api_key = args.api_key or os.environ.get("ANTHROPIC_API_KEY")
 
-    if args.list_gm_cases:
-        list_gm_cases()
+    if args.list_stress_prompts:
+        list_stress_prompts()
         return 0
 
     if args.compare:
         return compare(*args.compare)
 
-    if args.submit_gm_case:
+    if args.submit_stress_prompt:
         if not args.state_file or not args.narration_file:
-            print("--submit-gm-case requires --state-file and --narration-file.")
+            print("--submit-stress-prompt requires --state-file and --narration-file.")
             return 1
-        return submit_gm_case(args.submit_gm_case, args.label, args.state_file, args.narration_file)
+        return submit_stress_prompt(args.submit_stress_prompt, args.label, args.state_file, args.narration_file)
 
     if args.run_all_auto:
         if not args.labels or not args.efforts:

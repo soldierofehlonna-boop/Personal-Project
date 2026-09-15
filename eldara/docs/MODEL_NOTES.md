@@ -33,7 +33,7 @@ reliably they follow a long, rule-heavy system prompt over many turns.
   campaign, opt-in behind a flag, and needs credentials you supply
   yourself; no other mode of that script, and no part of committing a
   real turn, touches it. See that file's docstring for why the manual
-  `--submit-gm-case` path tests something more faithful.
+  `--submit-stress-prompt` path tests something more faithful.
 
   If you want the *play path* tooling to call a model automatically (for
   example, an automated prose-tone judge on every commit), that is still

@@ -67,7 +67,7 @@ download of roughly 10MB. See `scripts/semantic_gear_check.py`.
 Messages API directly, with credentials you supply. It is a test harness
 for a throwaway campaign, opt-in behind a flag, and outside the play
 path entirely — no part of committing a real turn touches it. Its other
-modes (`--run-tooling-cases`, `--list-gm-cases`, `--submit-gm-case`,
+modes (`--run-tooling-cases`, `--list-stress-prompts`, `--submit-stress-prompt`,
 `--compare`) need no key and no network.
 
 ## The recommended change: a local dependency parser (spaCy)
