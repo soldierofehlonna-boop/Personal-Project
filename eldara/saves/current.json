@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "turn": 0,
+  "turn": 1,
   "in_world_date": {
     "day": 1,
     "month": "Seedmonth",
@@ -40,5 +40,6 @@
     "silver": 0,
     "gold": 0,
     "platinum": 0
-  }
+  },
+  "commit_token": "1-32c56a"
 }
