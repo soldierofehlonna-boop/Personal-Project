@@ -91,7 +91,7 @@ def make_campaign_copy():
     return dest
 
 
-def run_case(case, model, effort, timeout, permission_mode):
+def run_case(case, model, effort, timeout, permission_mode, instructions_path):
     """One case, one fresh session, one fresh campaign copy.
 
     The copy is per-case on purpose. Sharing one copy across the run would
@@ -103,7 +103,8 @@ def run_case(case, model, effort, timeout, permission_mode):
     than a decision. Each case gets the same turn-0 baseline instead.
     """
     workdir = make_campaign_copy()
-    system_prompt = INSTRUCTIONS_PATH.read_text(encoding="utf-8")
+    start_turn = campaign_turn(workdir)
+    system_prompt = instructions_path.read_text(encoding="utf-8")
     cmd = ["claude", "-p", case["prompt"] + STATE_ASK,
            "--append-system-prompt", system_prompt, "--model", model]
     if effort:
@@ -122,10 +123,19 @@ def run_case(case, model, effort, timeout, permission_mode):
         out, err, code = "", "the `claude` CLI is not on PATH", None
     elapsed = round(time.monotonic() - started, 1)
 
+    # Keep the copy only if the session changed it. An unchanged copy has
+    # nothing to inspect and is a full duplicate of the project; one per
+    # case per run adds up fast on a fixed disk allowance.
+    end_turn = campaign_turn(workdir)
+    retained = end_turn != start_turn
+    if not retained:
+        shutil.rmtree(workdir.parent, ignore_errors=True)
+
     return {
         "case_id": case["id"],
-        "campaign_copy": str(workdir),
-        "copy_end_turn": campaign_turn(workdir),
+        "campaign_copy": str(workdir) if retained else "(unchanged, removed)",
+        "copy_start_turn": start_turn,
+        "copy_end_turn": end_turn,
         "prompt_sent": case["prompt"] + STATE_ASK,
         "watch_for": case["watch_for"],   # for the reader, never sent
         "response": out.strip(),
@@ -133,6 +143,36 @@ def run_case(case, model, effort, timeout, permission_mode):
         "exit_code": code,
         "seconds": elapsed,
     }
+
+
+def load_prior(json_path):
+    """Results already recorded under this label, or an empty list.
+
+    The JSON sidecar is the state of a run, not an optional extra. Writing
+    only at the end meant an interrupted run lost everything it had
+    already paid for -- three completed cases, ~310s of real model work,
+    discarded because the fourth was still going when the run was stopped.
+    This is the same defect as adversarial_stress_test.py's write_report()
+    replacing a section wholesale instead of upserting by case_id, in a
+    different shape: there it lost earlier cases to a later write, here to
+    no write at all.
+    """
+    if not json_path.exists():
+        return []
+    try:
+        return json.loads(json_path.read_text(encoding="utf-8")).get("results", [])
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def upsert(results, new_result):
+    """Replace a case's result in place, or append it, preserving order."""
+    for i, existing in enumerate(results):
+        if existing.get("case_id") == new_result["case_id"]:
+            results[i] = new_result
+            return results
+    results.append(new_result)
+    return results
 
 
 def campaign_turn(path):
@@ -143,13 +183,14 @@ def campaign_turn(path):
         return None
 
 
-def write_transcript(out_path, label, model, effort, results):
+def write_transcript(out_path, label, model, effort, results, instructions_path):
     lines = [
         f"# GM stress prompt transcript — {label}",
         "",
         f"- Run: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
         f"- Model: `{model}`" + (f", effort `{effort}`" if effort else ""),
-        f"- Cases: {len(results)}",
+        f"- Cases recorded: {len(results)}",
+        f"- Instructions: `{instructions_path}`",
         "- Each case ran against its own fresh copy of the campaign at turn 0, so no",
         "  case could be affected by what an earlier one committed.",
         "",
@@ -170,7 +211,8 @@ def write_transcript(out_path, label, model, effort, results):
             "### Prompt sent", "", "```text", r["prompt_sent"], "```", "",
             "### Watch for (not sent)", "", r["watch_for"], "",
             f"### Response  ({r['seconds']}s, exit {r['exit_code']}, "
-            f"copy ended at turn {r['copy_end_turn']})", "",
+            f"campaign copy turn {r.get('copy_start_turn')} -> "
+            f"{r.get('copy_end_turn')})", "",
         ]
         lines += ["```text", r["response"] or "(no output)", "```", ""]
         if r["stderr"]:
@@ -194,11 +236,19 @@ def main():
                              "asked, which is enough to read the campaign. Set this "
                              "only if you want the session able to commit inside the "
                              "throwaway copy.")
+    parser.add_argument("--instructions", metavar="PATH",
+                        help="Use a different GM_INSTRUCTIONS.md, so one label can be "
+                             "compared against another. To test a previous revision: "
+                             "`git show <rev>:eldara/prompts/GM_INSTRUCTIONS.md > /tmp/before.md` "
+                             "then point this at it.")
     parser.add_argument("--out", help="Transcript path (default under saves/exports/).")
-    parser.add_argument("--json", action="store_true",
-                        help="Also write a .json sidecar of the same run.")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    instructions_path = Path(args.instructions) if args.instructions else INSTRUCTIONS_PATH
+    if not instructions_path.exists():
+        print(f"No such instructions file: {instructions_path}")
+        return 1
 
     cases = GM_STRESS_PROMPTS
     if args.case:
@@ -215,8 +265,8 @@ def main():
         print(f"Would run {len(cases)} case(s) as `claude -p`, model={args.model}"
               + (f", effort={args.effort}" if args.effort else "")
               + f", timeout={args.timeout}s each.")
-        print(f"System prompt: {INSTRUCTIONS_PATH.relative_to(ROOT)} "
-              f"({len(INSTRUCTIONS_PATH.read_text(encoding='utf-8')):,} chars)")
+        print(f"System prompt: {instructions_path} "
+              f"({len(instructions_path.read_text(encoding='utf-8')):,} chars)")
         print(f"Transcript would be written to: {out_path}")
         print("Each session would run against a fresh throwaway copy of this "
               "project, never the live campaign.\n")
@@ -224,31 +274,42 @@ def main():
             print(f"  {c['id']}: {c['prompt'][:70]}...")
         return 0
 
+    json_path = out_path.with_suffix(".json")
+    results = load_prior(json_path)
+    if results:
+        print(f"Resuming label {args.label!r}: {len(results)} case(s) already "
+              "recorded; re-running a case replaces its entry.")
     print(f"Running {len(cases)} case(s), each against its own fresh copy of the "
           f"campaign (live campaign at turn {campaign_turn(ROOT)} is never the "
           "working directory)\n")
 
-    results = []
     for i, case in enumerate(cases, start=1):
         print(f"-- {i}/{len(cases)}: {case['id']} ... ", end="", flush=True)
-        r = run_case(case, args.model, args.effort,
-                     args.timeout, args.permission_mode)
+        r = run_case(case, args.model, args.effort, args.timeout,
+                     args.permission_mode, instructions_path)
         state = "ok" if r["exit_code"] == 0 else f"exit {r['exit_code']}"
         print(f"{state}, {r['seconds']}s, {len(r['response'])} chars")
-        results.append(r)
 
-    write_transcript(out_path, args.label, args.model, args.effort, results)
-    print(f"\nTranscript: {out_path}")
-    if args.json:
-        json_path = out_path.with_suffix(".json")
+        # Written after every case, not at the end. Stopping the run now
+        # costs the case in flight and nothing else.
+        upsert(results, r)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
         json_path.write_text(json.dumps({
             "label": args.label, "model": args.model, "effort": args.effort,
+            "instructions": str(instructions_path),
             "results": results}, indent=2) + "\n", encoding="utf-8")
-        print(f"JSON:       {json_path}")
-    copies = [r["campaign_copy"] for r in results]
-    print(f"\n{len(copies)} campaign copies left in place for inspection "
-          f"(each under {Path(copies[0]).parent.parent}); the transcript names "
-          "each one and the turn it ended at. Delete them when you're done.")
+        write_transcript(out_path, args.label, args.model, args.effort,
+                         results, instructions_path)
+
+    print(f"\nTranscript: {out_path}")
+    print(f"State:      {json_path}")
+    kept = [r["campaign_copy"] for r in results
+            if not r["campaign_copy"].startswith("(")]
+    if kept:
+        print(f"\n{len(kept)} campaign copy(ies) retained because a session changed "
+              "them; the transcript names each. Unchanged copies were removed.")
+    else:
+        print("\nNo session changed its campaign copy, so no copies were retained.")
     return 0
 
 
