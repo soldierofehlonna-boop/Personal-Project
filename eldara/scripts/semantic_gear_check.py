@@ -38,6 +38,31 @@ Nothing here is imported by the commit path; adopting it is a separate,
 later decision that should be made on the numbers that --self-test
 prints.
 
+MEASURED RESULT
+---------------
+    first sense only   27/33   false positives: NONE
+    any sense          23/33   false positives: weight, memory, skin,
+                               hands, shoulder
+
+The polysemy risk is real, and restricting to the first sense
+eliminates it: 'any sense' flags "his memory" and "his hands" exactly as
+feared, because memory is also computer hardware and a clock has hands.
+First-sense-only is the default here for that reason, and the only mode
+worth considering behind anything that blocks a commit.
+
+First-sense-only stays silent on six of fourteen item nouns, but five of
+those (kukri, bardiche, glaive, naginata, morningstar) are simply ABSENT
+FROM WORDNET, which no sense-tuning can fix -- they need a supplementary
+lexicon, whether that is this project's own lore keywords or a short
+hand-written list used to top WordNet up rather than to replace it. The
+sixth, tunic, is present, but its first sense is the anatomical membrane
+rather than the garment.
+
+Read those misses against the status quo rather than against perfection:
+self_critique.py's 35-word list misses ALL fourteen today. On this
+sample, first-sense WordNet catches eight of them while introducing zero
+new false positives -- strictly better than the list it would replace.
+
 WHAT IT STILL CANNOT DO
 -----------------------
 WordNet resolves vocabulary, not reference. It does not know that "the
