@@ -75,10 +75,12 @@ modes (`--run-tooling-cases`, `--list-gm-cases`, `--submit-gm-case`,
 
 **What it would add**
 
-- `spacy` in `requirements.txt`, plus the `en_core_web_sm` model, which
-  is fetched by its own command rather than by `pip` alone.
-- A step in `session.py setup` to fetch that model, wanting the same
-  PEP 668 retry treatment the existing install already has.
+- `spacy` in `requirements.txt`, plus the `en_core_web_sm` model. The
+  documented install is `python -m spacy download en_core_web_sm`, but
+  spaCy also supports pinning a model in `requirements.txt` by its
+  release URL, which is the form worth using here: it needs no new step
+  in `session.py setup`, and it pins a version rather than fetching
+  whatever is current.
 - An optional-import guard in `self_critique.py`, matching
   `validate_state.py`'s handling of `jsonschema`, so a machine without
   the package still runs every existing check.
@@ -86,15 +88,17 @@ modes (`--run-tooling-cases`, `--list-gm-cases`, `--submit-gm-case`,
 **The one asymmetry worth knowing about**
 
 Remote Control installs the model once and keeps it. A Cloud Session
-starts from a fresh container each time and would re-download it on
-every setup. This is the only place adopting spaCy dents `LOCAL.md`'s
-claim that everything "runs identically under either mode" — and it
-dents it on setup time, not on behaviour. Committed turns behave the
-same either way.
+starts from a fresh container each time and re-downloads it on every
+setup — about 40MB. This is the only place adopting spaCy dents
+`LOCAL.md`'s claim that everything "runs identically under either mode"
+— and it dents it on setup time, not on behaviour. Committed turns
+behave the same either way.
 
-Memory is not the constraint it might look like. `en_core_web_sm` is
-roughly 150–250MB resident, which is unremarkable on a personal computer
-and on a cloud sandbox alike.
+Memory is not the constraint it might look like. A loaded
+`en_core_web_sm` pipeline is reported at roughly 100MB resident, which is
+unremarkable on a personal computer and on a cloud sandbox alike. See
+`docs/MODEL_NOTES.md` for why the larger growth figures on spaCy's
+tracker describe a bigger model than this one.
 
 **What it would buy**
 

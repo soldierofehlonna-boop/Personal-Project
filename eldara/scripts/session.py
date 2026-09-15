@@ -229,13 +229,17 @@ def cmd_setup(_args):
         if rc != 0:
             print("  Plain pip install failed (common on Debian/Ubuntu systems that")
             print("  externally manage Python -- PEP 668, and stock Ubuntu Server")
-            print("  images are affected by this). Retrying with --break-system-packages,")
-            print("  which is safe for a project-scoped install like this one:")
+            print("  images are affected by this).")
+            print("  On a computer you keep, a virtual environment is the better fix:")
+            print("    python3 -m venv .venv && source .venv/bin/activate")
+            print(f"    python3 -m pip install -r {req_path.name}")
+            print("  Retrying with --break-system-packages. That installs into the")
+            print("  system Python -- it is not project-scoped, whatever the flag's")
+            print("  name suggests -- which is fine in a throwaway cloud sandbox and")
+            print("  worth avoiding on a machine you rely on:")
             rc = subprocess.run([*pip_cmd, "--break-system-packages"]).returncode
             if rc != 0:
-                print("  Still failed. Consider a virtual environment instead:")
-                print("    python3 -m venv .venv && source .venv/bin/activate")
-                print(f"    pip install -r {req_path.name}")
+                print("  Still failed -- use the virtual environment shown above.")
     else:
         print("  No requirements.txt found; skipping.")
 

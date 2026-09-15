@@ -72,9 +72,24 @@ environment.
 
 If a plain `pip install` fails with a message about an "externally
 managed environment" (a Debian/Ubuntu PEP 668 policy that also applies to
-some cloud sandbox images), `session.py setup` already retries
-automatically with `--break-system-packages`; this doesn't depend on
-which of the two connection modes above you're using.
+some cloud sandbox images), `session.py setup` prints the virtual-environment
+command and then retries automatically with `--break-system-packages`.
+
+Which of those two you actually want *does* depend on the connection mode.
+`--break-system-packages` installs into the system Python — it is not
+project-scoped, whatever the name suggests — so it is a reasonable default
+in a **Cloud Session**, whose container is thrown away anyway, and worth
+declining on the **Remote Control** machine you keep, where a virtual
+environment costs one command and keeps this project's packages out of
+the system set:
+
+```
+python3 -m venv .venv && source .venv/bin/activate
+python3 -m pip install -r requirements.txt
+```
+
+Everything in `scripts/` runs the same either way; the only difference is
+which Python owns the packages.
 
 ## Running a session
 

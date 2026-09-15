@@ -79,9 +79,18 @@ structurally cannot do no matter how many phrase variants are added.
   metonymy cases above ("the sword at his hip") on its own — those need
   coreference resolution too (what does "the sword" refer to in this
   scene), which in practice means a heavier local model, not just a
-  parser. Real resource cost if you go this route: loading
-  `en_core_web_sm` alone measures at roughly 150–250MB resident, growing
-  further under repeated calls per spaCy's own issue tracker. Neither of
+  parser. Real resource cost if you go this route: `en_core_web_sm` is
+  about 40MB on disk, and users report a loaded pipeline sitting at
+  roughly 100MB resident. Memory growth under sustained use is reported
+  on spaCy's tracker, but read that evidence carefully before treating
+  it as a reason not to adopt: the detailed reports are against the
+  larger `en_core_web_md` (500–600MB in one Kubernetes case), and
+  maintainers attribute the growth to Python not releasing memory
+  promptly and to long-document NER rather than to a confirmed leak.
+  Loading the model once and reusing the object, and preferring
+  `nlp.pipe()` over per-call `nlp()`, are the documented mitigations —
+  both trivially satisfied by a per-commit check that runs once per
+  process. Neither of
   the two ways this project is actually run is memory-constrained at that
   scale, though — `LOCAL.md`'s device list is your own computer (Remote
   Control) or an Anthropic-managed sandbox (Cloud Sessions), not a
