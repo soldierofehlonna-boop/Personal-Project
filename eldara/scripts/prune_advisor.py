@@ -111,7 +111,7 @@ def main():
 
     try:
         state = load_state()
-    except (json.JSONDecodeError, OSError) as e:
+    except (json.JSONDecodeError, OSError, RecursionError) as e:
         print(f"FAIL: could not read/parse {CURRENT_PATH}: {e}")
         sys.exit(1)
 

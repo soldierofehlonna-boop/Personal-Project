@@ -176,7 +176,7 @@ def update_npc_registry(new_state):
     if NPC_REGISTRY_PATH.exists():
         try:
             registry = load_json(NPC_REGISTRY_PATH)
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError, RecursionError):
             registry = {}
 
     changed = False
@@ -223,7 +223,7 @@ def snapshot_pruned_npcs(old_state, new_state):
     if NPC_REGISTRY_PATH.exists():
         try:
             registry = load_json(NPC_REGISTRY_PATH)
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError, RecursionError):
             registry = {}
 
     old_npcs = {n.get("npc_id"): n for n in old_state.get("npc_relationships", [])
@@ -603,13 +603,13 @@ def main():
 
         try:
             old_state = load_json(CURRENT_PATH) if CURRENT_PATH.exists() else {}
-        except (json.JSONDecodeError, OSError) as e:
+        except (json.JSONDecodeError, OSError, RecursionError) as e:
             print(f"FAIL: could not read/parse existing {CURRENT_PATH}: {e}")
             sys.exit(1)
 
         try:
             new_state = load_json(proposed_path)
-        except (json.JSONDecodeError, OSError) as e:
+        except (json.JSONDecodeError, OSError, RecursionError) as e:
             print(f"FAIL: could not read/parse proposed state file {proposed_path}: {e}")
             sys.exit(1)
 

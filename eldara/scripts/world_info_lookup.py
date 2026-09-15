@@ -38,7 +38,7 @@ def load_keywords():
         return {}
     try:
         raw = json.loads(KEYWORDS_PATH.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as e:
+    except (json.JSONDecodeError, OSError, RecursionError) as e:
         print(f"NOTE: could not read {KEYWORDS_PATH.relative_to(DOCS.parent)} ({e}) -- no lore keywords available.")
         return {}
     keywords = {}

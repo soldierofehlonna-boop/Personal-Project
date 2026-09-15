@@ -81,7 +81,7 @@ def pass1_coverage():
 
     try:
         state = load_json_as_dict(CURRENT_PATH)
-    except (json.JSONDecodeError, OSError, ValueError) as e:
+    except (json.JSONDecodeError, OSError, ValueError, RecursionError) as e:
         print(f"FAIL: could not read/parse {CURRENT_PATH}: {e}")
         print("saves/current.json appears corrupted -- see docs/RECOVERY.md.")
         return
@@ -186,7 +186,7 @@ def pass2_adversarial(tmp_dir):
     # 2. validate_state.py must reject an is_new_npc conflict.
     try:
         base = load_json_as_dict(CURRENT_PATH) if CURRENT_PATH.exists() else None
-    except (json.JSONDecodeError, OSError, ValueError) as e:
+    except (json.JSONDecodeError, OSError, ValueError, RecursionError) as e:
         print(f"FAIL: could not read/parse {CURRENT_PATH}: {e}")
         print("saves/current.json appears corrupted -- see docs/RECOVERY.md.")
         return
@@ -392,7 +392,7 @@ def pass3_drift_proxies():
 
     try:
         state = load_json_as_dict(CURRENT_PATH)
-    except (json.JSONDecodeError, OSError, ValueError) as e:
+    except (json.JSONDecodeError, OSError, ValueError, RecursionError) as e:
         print(f"FAIL: could not read/parse {CURRENT_PATH}: {e}")
         print("saves/current.json appears corrupted -- see docs/RECOVERY.md.")
         return

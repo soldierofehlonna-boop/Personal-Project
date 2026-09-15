@@ -59,7 +59,7 @@ def load_current_token():
     try:
         with open(CURRENT_PATH, "r", encoding="utf-8") as f:
             state = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError, RecursionError):
         return None
     if not isinstance(state, dict):
         # JSON that parses successfully but isn't a dict at the top

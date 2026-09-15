@@ -316,7 +316,7 @@ def manual_checks(state):
     if NPC_REGISTRY_PATH.exists():
         try:
             registry = load_json(NPC_REGISTRY_PATH)
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError, RecursionError):
             registry = {}
         for npc in npc_list:
             npc_id = npc.get("npc_id")
@@ -349,7 +349,7 @@ def manual_checks(state):
     if LOCATIONS_PATH.exists():
         try:
             locations_data = load_json(LOCATIONS_PATH)
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError, RecursionError):
             locations_data = None
 
     if locations_data is not None:
@@ -422,7 +422,7 @@ def run_validation(path):
 
     try:
         state = load_json_as_dict(path)
-    except (json.JSONDecodeError, OSError, ValueError) as e:
+    except (json.JSONDecodeError, OSError, ValueError, RecursionError) as e:
         print(f"FAIL: could not read/parse {path}: {e}")
         return False
 
@@ -451,7 +451,7 @@ def quick_check(path):
     without the full schema pass."""
     try:
         state = load_json_as_dict(path)
-    except (json.JSONDecodeError, OSError, ValueError) as e:
+    except (json.JSONDecodeError, OSError, ValueError, RecursionError) as e:
         print(f"FAIL (quick): could not read/parse {path}: {e}")
         return False
 

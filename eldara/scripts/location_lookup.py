@@ -42,7 +42,7 @@ def load_locations():
     try:
         with open(LOCATIONS_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError, RecursionError):
         return None
 
 

@@ -21,7 +21,7 @@ def main():
     try:
         with open(CURRENT_PATH, "r", encoding="utf-8") as f:
             state = json.load(f)
-    except (json.JSONDecodeError, OSError) as e:
+    except (json.JSONDecodeError, OSError, RecursionError) as e:
         # docs/RECOVERY.md's first recovery step for a corrupted
         # saves/current.json is to run this exact script to retrieve the
         # last known-good state -- so failing here needs to give a clear

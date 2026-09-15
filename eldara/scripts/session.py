@@ -318,7 +318,7 @@ def _looks_like_never_played_repo():
     try:
         with open(CURRENT_PATH, "r", encoding="utf-8") as f:
             state = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError, RecursionError):
         return False
     if not _is_pristine_baseline_state(state):
         return False

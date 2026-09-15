@@ -76,7 +76,7 @@ def load_pinned_facts():
         return []
     try:
         facts = json.loads(PINNED_FACTS_PATH.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as e:
+    except (json.JSONDecodeError, OSError, RecursionError) as e:
         print(f"NOTE: could not read {PINNED_FACTS_PATH.relative_to(ROOT)} ({e}) -- skipping pinned-fact checks.")
         return []
     return facts

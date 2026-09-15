@@ -54,7 +54,7 @@ def load_keywords_raw():
         return {}
     try:
         return json.loads(wil.KEYWORDS_PATH.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError, RecursionError):
         return {}
 
 
