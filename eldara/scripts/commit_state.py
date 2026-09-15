@@ -192,6 +192,66 @@ def update_npc_registry(new_state):
             f.write("\n")
 
 
+def snapshot_pruned_npcs(old_state, new_state):
+    """When an npc_id present in old_state's npc_relationships is no
+    longer in new_state's (pruned out of the capped, soft-limit-10
+    working set), persist what's known about them into
+    npc_registry.json before that detail disappears from
+    saves/current.json for good.
+
+    Why this exists: npc_registry.json previously only ever recorded
+    {"name": ...} at the moment an npc_id was first introduced (see
+    update_npc_registry() above) -- it never recorded anything else, so
+    an NPC pruned at turn 30 and reintroduced at turn 150 came back with
+    nothing but their name, even though their disposition, note, and
+    last_referenced_turn had all been sitting right there in
+    current.json until the instant they aged out. This is this
+    project's answer to Auferet's Character Library actually
+    remembering someone, not just deduplicating an id -- see
+    prune_advisor.py's docstring, which already ranks prune candidates
+    by this same last_referenced_turn field.
+
+    Only ever adds/refreshes detail, never removes a name the registry
+    already has: an NPC pruned more than once (reintroduced, pruned
+    again) gets their snapshot overwritten with the newer one, since
+    that's strictly more recent information, not stale data clobbering
+    something better. This never touches an npc_id that's still present
+    in new_state -- an active relationship's fullest, most current
+    detail is already current.json itself; the registry only needs a
+    snapshot for the ones that just left it."""
+    registry = {}
+    if NPC_REGISTRY_PATH.exists():
+        try:
+            registry = load_json(NPC_REGISTRY_PATH)
+        except (json.JSONDecodeError, OSError):
+            registry = {}
+
+    old_npcs = {n.get("npc_id"): n for n in old_state.get("npc_relationships", [])
+                if isinstance(n, dict) and n.get("npc_id")}
+    still_present = {n.get("npc_id") for n in new_state.get("npc_relationships", [])
+                      if isinstance(n, dict)}
+
+    changed = False
+    for npc_id, npc in old_npcs.items():
+        if npc_id in still_present:
+            continue
+        entry = registry.setdefault(npc_id, {"name": npc.get("name", "")})
+        entry["name"] = npc.get("name") or entry.get("name", "")
+        if npc.get("disposition"):
+            entry["last_known_disposition"] = npc["disposition"]
+        if npc.get("note"):
+            entry["last_known_note"] = npc["note"]
+        if npc.get("last_referenced_turn") is not None:
+            entry["last_referenced_turn"] = npc["last_referenced_turn"]
+        entry["pruned_after_turn"] = old_state.get("turn")
+        changed = True
+
+    if changed:
+        with open(NPC_REGISTRY_PATH, "w", encoding="utf-8") as f:
+            json.dump(registry, f, indent=2)
+            f.write("\n")
+
+
 def strip_registered_is_new_flags(state):
     """Removes the transient 'is_new_npc' flag from every npc_relationships
     entry once update_npc_registry() has run.
@@ -568,6 +628,7 @@ def main():
         token = make_commit_token(new_state)
         new_state["commit_token"] = token
         update_npc_registry(new_state)
+        snapshot_pruned_npcs(old_state, new_state)
         strip_registered_is_new_flags(new_state)
         stamp_npc_recency(new_state, critique_text)
         arrived = resolve_travel_arrival(new_state)
