@@ -33,6 +33,11 @@
       "name": "Shoes",
       "acquired_turn": 0,
       "acquired_event": "Baseline starting clothes"
+    },
+    {
+      "name": "Traveler's cloak",
+      "acquired_turn": 1,
+      "acquired_event": "Given by an innkeeper against the cold"
     }
   ],
   "currency": {
@@ -41,5 +46,5 @@
     "gold": 0,
     "platinum": 0
   },
-  "commit_token": "1-f9fe21"
+  "commit_token": "1-1377b6"
 }

@@ -9,10 +9,11 @@ Add a freeform note alongside a state commit via
 
 ### Turn 1 — 2026-09-15 22:40 UTC
 
-_[stress-test:tone-break-paraphrase-evasion] tone break paraphrased to avoid the literal TONE_BREAK_PHRASES strings_
+_Turn 1: acquired traveler's cloak_
 
 Self-critique: ran clean (self_critique.py passed)
 
-- commit_token: null -> "1-f9fe21"
+- commit_token: null -> "1-1377b6"
+- gear: [{"name": "T-shirt", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Jeans", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Underwear", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Socks", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Shoes", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}] -> [{"name": "T-shirt", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Jeans", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Underwear", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Socks", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Shoes", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"}, {"name": "Traveler's cloak", "acquired_turn": 1, "acquired_event": "Given by an innkeeper against the cold"}]
 - turn: 0 -> 1
 
