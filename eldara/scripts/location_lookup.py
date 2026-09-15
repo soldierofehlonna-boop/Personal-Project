@@ -72,6 +72,24 @@ def format_location(loc_id, entry):
     return "\n".join(lines)
 
 
+def routes_touching(data, loc_id):
+    """Every tracked route with loc_id as one endpoint, as (other_id,
+    other_name, route) tuples sorted by other_name. Used to give a
+    no-known-route answer some useful context -- see format_route()'s
+    comment on why this doesn't try to estimate a distance instead."""
+    routes = data.get("routes", {})
+    locations = data.get("locations", {})
+    touching = []
+    for route_key, route in routes.items():
+        ids = route_key.split("|")
+        if loc_id not in ids:
+            continue
+        other_id = ids[0] if ids[1] == loc_id else ids[1]
+        other_name = locations.get(other_id, {}).get("name", other_id)
+        touching.append((other_id, other_name, route))
+    return sorted(touching, key=lambda t: t[1])
+
+
 def format_route(data, from_id, to_id):
     routes = data.get("routes", {})
     route_key = "|".join(sorted([from_id, to_id]))
@@ -79,7 +97,20 @@ def format_route(data, from_id, to_id):
     from_name = data["locations"][from_id].get("name", from_id)
     to_name = data["locations"][to_id].get("name", to_id)
     if route is None:
-        return (
+        # Deliberately does NOT estimate a distance/duration from
+        # coordinates or any other inference -- saves/locations.json's
+        # own header comment states the design intent plainly: this file
+        # mirrors durations already established in
+        # docs/ELDARA_REFERENCE.md \u00a72.8, it never originates geography
+        # the lore doesn't already establish (and state_schema.json says
+        # the same of current_location/travel: "not a coordinate system
+        # with movement math"). Inventing a plausible-looking number here
+        # would be exactly the kind of unbacked claim this project's
+        # validation exists to prevent elsewhere. What CAN help without
+        # inventing anything: surfacing the routes that ARE already
+        # tracked from either endpoint, so a GM planning a new route has
+        # real reference points instead of nothing at all.
+        lines = [
             f"No known route between {from_name} and {to_name} in "
             "saves/locations.json. This does not mean the journey is "
             "impossible -- it means the duration isn't established yet. "
@@ -87,7 +118,14 @@ def format_route(data, from_id, to_id):
             "both docs/ELDARA_REFERENCE.md \u00a72.8 and saves/locations.json "
             "rather than narrating a specific day count with nothing "
             "backing it."
-        )
+        ]
+        for loc_id, loc_name in ((from_id, from_name), (to_id, to_name)):
+            nearby = routes_touching(data, loc_id)
+            if nearby:
+                bits = [f"{other_name} ({r.get('min_days')}\u2013{r.get('max_days')}d)"
+                        for _, other_name, r in nearby]
+                lines.append(f"  Known routes from {loc_name}: {', '.join(bits)}")
+        return "\n".join(lines)
     lines = [f"{from_name} \u2194 {to_name}: {route.get('min_days')}\u2013{route.get('max_days')} days"]
     if route.get("note"):
         lines.append(f"  {route['note']}")
