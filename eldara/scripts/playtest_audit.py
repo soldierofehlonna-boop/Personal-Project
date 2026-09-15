@@ -329,7 +329,16 @@ def _check_new_npc_commit_stays_in_sync(tmp_dir):
     hook_src = sandbox / "scripts" / "git-hooks" / "pre-commit"
     if hook_src.exists():
         hook_dest = hooks_dir / "pre-commit"
-        _shutil.copy2(hook_src, hook_dest)
+        # Mirrors session.py's own installer: the hook template contains
+        # __ELDARA_PROJECT_ROOT__, which must be substituted for the
+        # sandbox's own root (the sandbox IS its own repo's top level,
+        # unlike the real project) before installing -- a plain copy
+        # would leave the literal placeholder in place and the hook
+        # would cd into a nonexistent directory, silently disabling the
+        # exact check this regression test exists to exercise.
+        content = hook_src.read_text(encoding="utf-8")
+        content = content.replace("__ELDARA_PROJECT_ROOT__", str(sandbox))
+        hook_dest.write_text(content, encoding="utf-8")
         hook_dest.chmod(0o755)
 
     # Turn 1: introduce a brand-new NPC, exactly the shape that triggered

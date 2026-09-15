@@ -264,7 +264,16 @@ def cmd_setup(_args):
             src = SCRIPTS / "git-hooks" / hook_name
             dest = hooks_dir / hook_name
             if src.exists():
-                shutil.copy2(src, dest)
+                # A plain copy isn't enough: the hook template contains
+                # __ELDARA_PROJECT_ROOT__, which must be substituted for
+                # this machine's actual ROOT before installing, since the
+                # copied file (now living in .git/hooks/, possibly far
+                # from ROOT if this project is nested in a larger repo)
+                # has no other way to find it. See the hook files' own
+                # comments for the full reasoning.
+                content = src.read_text(encoding="utf-8")
+                content = content.replace("__ELDARA_PROJECT_ROOT__", str(ROOT))
+                dest.write_text(content, encoding="utf-8")
                 dest.chmod(0o755)
                 print(f"  Installed {hook_name}")
             else:
