@@ -151,6 +151,39 @@ def try_jsonschema_validation(state, schema):
     return [f"{'.'.join(str(p) for p in e.path) or '(root)'}: {e.message}" for e in errors]
 
 
+def normalize_npc_id(npc_id):
+    """Canonical form for COMPARING npc_ids -- never for storing them.
+
+    gear names and open_thread text are already deduped on
+    .strip().lower() in manual_checks() below; npc_id was the one
+    identifier still compared as an exact string, so 'innkeeper-maren'
+    and 'Innkeeper-Maren' were accepted as two distinct people with no
+    complaint. Normalizing only the comparison means no existing
+    npc_registry.json has to be rewritten -- whatever spelling is
+    already stored stays stored.
+    """
+    if not isinstance(npc_id, str):
+        return None
+    return npc_id.strip().lower() or None
+
+
+def find_registered_npc_id(registry, npc_id):
+    """The key under which npc_id is already registered, ignoring case
+    and surrounding whitespace -- or None if it isn't registered.
+
+    Returns the STORED spelling rather than a boolean so callers can
+    update the entry that already exists instead of adding a second one,
+    and can tell the author which spelling the registry uses.
+    """
+    target = normalize_npc_id(npc_id)
+    if target is None or not isinstance(registry, dict):
+        return None
+    for stored in registry:
+        if normalize_npc_id(stored) == target:
+            return stored
+    return None
+
+
 def manual_checks(state):
     """Checks that always run, regardless of whether jsonschema is
     installed -- this is the authoritative enforcement layer."""
@@ -272,10 +305,24 @@ def manual_checks(state):
     npc_id_seen = {}
     for idx, npc in enumerate(npc_list):
         npc_id = npc.get("npc_id")
-        if npc_id and npc_id in npc_id_seen:
-            errors.append(f"npc_relationships has duplicate npc_id '{npc_id}' (indices {npc_id_seen[npc_id]} and {idx})")
+        key = normalize_npc_id(npc_id)
+        if key is None:
+            # A missing npc_id is a separate problem, reported by the
+            # registry check below; don't key the dedup map on None.
+            continue
+        if key in npc_id_seen:
+            prev_idx, prev_spelling = npc_id_seen[key]
+            if prev_spelling == npc_id:
+                errors.append(f"npc_relationships has duplicate npc_id '{npc_id}' (indices {prev_idx} and {idx})")
+            else:
+                errors.append(
+                    f"npc_relationships has two npc_ids differing only by case or "
+                    f"surrounding whitespace: '{prev_spelling}' (index {prev_idx}) and "
+                    f"'{npc_id}' (index {idx}) -- these would register as two separate "
+                    "people; pick one spelling and use it consistently"
+                )
         else:
-            npc_id_seen[npc_id] = idx
+            npc_id_seen[key] = (idx, npc_id)
 
     raw_thread_list = state.get("open_threads", []) if isinstance(state.get("open_threads"), list) else []
     thread_list = [t for t in raw_thread_list if isinstance(t, dict)]
@@ -323,12 +370,27 @@ def manual_checks(state):
             is_new = npc.get("is_new_npc")
             if npc_id is None:
                 continue
-            already_registered = npc_id in registry
+            registered_as = find_registered_npc_id(registry, npc_id)
+            already_registered = registered_as is not None
+            # A different spelling of an id that IS registered isn't an
+            # error -- the lookup found the right person -- but passing
+            # it silently is how the save file and the registry drift
+            # apart on spelling, so it earns a non-blocking note.
+            if already_registered and registered_as != npc_id:
+                warnings.append(
+                    f"npc '{npc_id}' is registered as '{registered_as}' -- same person, "
+                    "different spelling; use the registered spelling so the save and "
+                    "the registry stay in agreement"
+                )
             # is_new is checked against all three states (True, False,
             # None/omitted) so that omitting the field on a genuinely new
             # npc_id doesn't silently skip this consistency check.
             if is_new is True and already_registered:
-                errors.append(f"npc '{npc_id}' marked is_new_npc=true but already exists in npc_registry.json")
+                errors.append(
+                    f"npc '{npc_id}' marked is_new_npc=true but already exists in "
+                    f"npc_registry.json"
+                    + (f" as '{registered_as}'" if registered_as != npc_id else "")
+                )
             elif is_new is False and not already_registered:
                 errors.append(f"npc '{npc_id}' marked is_new_npc=false but not found in npc_registry.json")
             elif is_new is None and not already_registered:

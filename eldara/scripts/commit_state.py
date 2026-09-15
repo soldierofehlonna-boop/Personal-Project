@@ -74,7 +74,9 @@ NPC_REGISTRY_PATH = SAVES_DIR / "npc_registry.json"
 LOCATIONS_PATH = ROOT / "saves" / "locations.json"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from validate_state import run_validation, date_ordinal  # noqa: E402
+from validate_state import (  # noqa: E402
+    run_validation, date_ordinal, normalize_npc_id, find_registered_npc_id,
+)
 
 
 def load_json(path):
@@ -182,7 +184,14 @@ def update_npc_registry(new_state):
     changed = False
     for npc in new_state.get("npc_relationships", []):
         npc_id = npc.get("npc_id")
-        if npc_id and npc_id not in registry:
+        if not npc_id:
+            continue
+        # Compared case-insensitively so a differently-cased spelling
+        # updates nothing rather than registering a second person under
+        # a near-identical key. validate_state.py rejects two variants
+        # inside one state, but a variant of an id registered on an
+        # EARLIER turn reaches here having passed validation.
+        if find_registered_npc_id(registry, npc_id) is None:
             registry[npc_id] = {"name": npc.get("name", "")}
             changed = True
 
@@ -226,16 +235,30 @@ def snapshot_pruned_npcs(old_state, new_state):
         except (json.JSONDecodeError, OSError, RecursionError):
             registry = {}
 
-    old_npcs = {n.get("npc_id"): n for n in old_state.get("npc_relationships", [])
-                if isinstance(n, dict) and n.get("npc_id")}
-    still_present = {n.get("npc_id") for n in new_state.get("npc_relationships", [])
-                      if isinstance(n, dict)}
+    # Keyed on the normalized id so an NPC whose id changes case between
+    # turns isn't read as one person leaving and another arriving -- that
+    # would snapshot them as pruned while they're still in the scene.
+    old_npcs = {}
+    for n in old_state.get("npc_relationships", []):
+        if isinstance(n, dict):
+            key = normalize_npc_id(n.get("npc_id"))
+            if key:
+                old_npcs[key] = n
+    still_present = {normalize_npc_id(n.get("npc_id"))
+                     for n in new_state.get("npc_relationships", [])
+                     if isinstance(n, dict)}
+    still_present.discard(None)
 
     changed = False
-    for npc_id, npc in old_npcs.items():
-        if npc_id in still_present:
+    for key, npc in old_npcs.items():
+        if key in still_present:
             continue
-        entry = registry.setdefault(npc_id, {"name": npc.get("name", "")})
+        npc_id = npc.get("npc_id")
+        # Write under the spelling the registry already uses, if any.
+        entry = registry.setdefault(
+            find_registered_npc_id(registry, npc_id) or npc_id,
+            {"name": npc.get("name", "")},
+        )
         entry["name"] = npc.get("name") or entry.get("name", "")
         if npc.get("disposition"):
             entry["last_known_disposition"] = npc["disposition"]
