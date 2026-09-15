@@ -530,7 +530,24 @@ def write_report(label, section, results):
             existing = {}
     existing.setdefault("label", label)
     existing.setdefault("sections", {})
-    existing["sections"][section] = results
+
+    # Upsert by case_id rather than replacing the section. --submit-gm-case
+    # writes one result at a time, and the documented manual workflow is to
+    # feed each GM case to it in turn under one label -- which, with a
+    # wholesale replace, silently erased every earlier case and left a
+    # five-case run reporting one result. Keyed upsert also makes re-running
+    # a single case idempotent instead of duplicating it.
+    prior = existing["sections"].get(section, [])
+    prior = [r for r in prior if isinstance(r, dict)]
+    order = [r.get("case_id") for r in prior]
+    by_id = {r.get("case_id"): r for r in prior}
+    for result in results:
+        case_id = result.get("case_id")
+        if case_id not in by_id:
+            order.append(case_id)
+        by_id[case_id] = result
+    existing["sections"][section] = [by_id[c] for c in order]
+
     report_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
     print(f"\nReport written/updated: {report_path.relative_to(ROOT)}")
 

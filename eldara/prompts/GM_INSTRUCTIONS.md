@@ -104,12 +104,45 @@ Maintain a mental model of: date, gear, currency, status/injuries, language stat
 python3 scripts/session.py start
 ```
 
-Validates the current save and prints a status summary before play begins. Run `python3 scripts/session.py setup` once beforehand on a freshly cloned copy of this project, and `python3 scripts/session.py check` any time to confirm the environment is in good order. See `LOCAL.md` for what "the environment" means concretely (an SSH session into a small always-on VM).
+Validates the current save and prints a status summary before play begins. Run `python3 scripts/session.py setup` once beforehand on a freshly cloned copy of this project, and `python3 scripts/session.py check` any time to confirm the environment is in good order. See `LOCAL.md` for what "the environment" means concretely — Claude Code on a computer you keep (Remote Control) or an Anthropic-managed sandbox (a Cloud Session). Both run these scripts identically.
 
 ### After any state-changing scene
 
-1. Draft the proposed state as a complete JSON object — copy `saves/current.json` and apply only what actually changed this turn — and write it to a scratch file (e.g. `/tmp/proposed_state.json`) on the machine running the tooling. Never hand-edit `saves/current.json` directly.
-2. Run:
+Three stages, in this order, and deliberately not collapsed into one:
+**narrate**, then **record**, then **verify**. Finish the prose before
+you start the JSON.
+
+The separation is the point. When narration and bookkeeping happen in one
+breath, the state gets written to justify prose you have already
+committed to, and anything the prose implied but the state omits stays
+invisible — because you are defending the sentence rather than reading
+it. Recording as a distinct step means re-reading your own paragraph as
+if someone else wrote it, and asking what it actually claims.
+
+1. **Narrate the turn.** Prose only. No JSON yet.
+
+2. **Record what the prose committed you to.** Re-read the narration you
+   just wrote and enumerate, explicitly, every concrete thing it claims:
+   - each physical object it puts in Chad's possession — including by
+     description or location rather than by name ("the weapon in his
+     hand", "the blade at his hip"), which is the exact shape
+     `scripts/self_critique.py` cannot catch for you
+   - each person named or met
+   - each commitment, debt, or deadline anyone accepted
+   - each injury, cost, or condition that landed
+   - each change of place or date
+
+   Then draft the proposed state as a complete JSON object — copy
+   `saves/current.json` and apply only what actually changed — and write
+   it to a scratch file (e.g. `/tmp/proposed_state.json`). Never
+   hand-edit `saves/current.json` directly.
+
+   If the enumeration turns up something the prose gave Chad that the
+   closed-inventory rule forbids, the narration is what is wrong, not the
+   state. Redraft the prose. Do not quietly add the item, and do not
+   quietly drop it from the record.
+
+3. **Verify.** Run:
    ```
    python3 scripts/session.py commit /tmp/proposed_state.json --note "one-line note"
    ```
@@ -118,6 +151,42 @@ Validates the current save and prints a status summary before play begins. Run `
 If `saves/current.json` has already been directly edited (e.g. restoring a hand-edited or externally-supplied save per `docs/RECOVERY.md`), run `python3 scripts/session.py commit` with no file argument instead.
 
 This is backed by mechanical enforcement beyond just following these steps: a git pre-commit hook (installed by `python3 scripts/session.py setup`) refuses to let an invalid `saves/current.json` be committed at all.
+
+### Worked examples of a recorded change
+
+Three shapes that `scripts/validate_state.py` rejects most often when
+they are wrong. Each fragment is only the part that changed — the file
+you write is still the complete state object.
+
+Gear acquired on-screen (turn 4). `acquired_event` names the witnessed
+event, not the item:
+
+```json
+"gear": [
+  {"name": "Shoes", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"},
+  {"name": "Wool cloak", "acquired_turn": 4, "acquired_event": "Maren handed it over at the inn after the storm"}
+]
+```
+
+An NPC met for the first time. `is_new_npc` must be present and explicit
+— omitting it is a validation failure, not a default, and the `npc_id` is
+lowercase-hyphenated and never reused for a different person:
+
+```json
+"npc_relationships": [
+  {"npc_id": "innkeeper-maren", "name": "Maren", "disposition": "wary",
+   "note": "Runs the inn where Chad first woke", "is_new_npc": true}
+]
+```
+
+A deadline someone actually accepted. `deadline_turn` must be strictly
+greater than `added_turn` — equal is rejected:
+
+```json
+"open_threads": [
+  {"text": "Pay Maren for the room", "added_turn": 4, "active": true, "deadline_turn": 7}
+]
+```
 
 ### Inventory & validation
 
