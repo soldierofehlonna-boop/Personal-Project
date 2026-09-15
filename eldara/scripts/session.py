@@ -67,6 +67,20 @@ Subcommands:
     python3 scripts/session.py audit     Runs the full combined three-pass
                                           playtest_audit.py report.
 
+    python3 scripts/session.py gm-cases  Lists the GM's situational cases
+            [--due] [--category C]        (trigger -> required action) from
+            [--check-sources] [QUERY]     docs/gm_cases.json, each tagged
+                                          with the prompts/GM_INSTRUCTIONS.md
+                                          heading it came from. --due narrows
+                                          to the ones mechanically live
+                                          against saves/current.json right
+                                          now (turn 0, a multiple-of-20 turn,
+                                          an array at its soft cap, a passed
+                                          deadline, travel in progress,
+                                          perishables held). Read-only and
+                                          safe mid-scene. Also reachable as
+                                          'list-gm-cases'.
+
     python3 scripts/session.py earn-coverage [--dry-run] [--audit-only]
                                           Wraps scripts/earn_clean_slate.py:
                                           plays 11 fixed, schema-valid turns
@@ -478,6 +492,24 @@ def cmd_audit(_args):
 
 
 # ---------------------------------------------------------------------------
+# gm-cases
+# ---------------------------------------------------------------------------
+
+def cmd_gm_cases(args):
+    cases_args = ["scripts/gm_cases.py"]
+    if args.due:
+        cases_args.append("--due")
+    if args.state:
+        cases_args.extend(["--state", args.state])
+    if args.category:
+        cases_args.extend(["--category", args.category])
+    if args.check_sources:
+        cases_args.append("--check-sources")
+    cases_args.extend(args.query)
+    return run(cases_args)
+
+
+# ---------------------------------------------------------------------------
 # earn-coverage
 # ---------------------------------------------------------------------------
 
@@ -624,6 +656,27 @@ def main():
 
     sub.add_parser("audit", help="Run the full three-pass playtest audit.")
 
+    p_cases = sub.add_parser(
+        "gm-cases", aliases=["list-gm-cases"],
+        help="List the GM's situational cases (trigger -> required action) "
+             "from docs/gm_cases.json, optionally only those live against "
+             "the current save."
+    )
+    p_cases.add_argument("query", nargs="*", default=[],
+                          help="Only show cases matching this text.")
+    p_cases.add_argument("--due", action="store_true",
+                          help="Only cases whose condition is mechanically true "
+                               "against the save right now.")
+    p_cases.add_argument("--state", default=None,
+                          help="State file for --due (default saves/current.json) -- "
+                               "point it at a proposed state to check it before committing.")
+    p_cases.add_argument("--category", default=None,
+                          help="Only one category: every-turn, player, state, "
+                               "state-change, tooling.")
+    p_cases.add_argument("--check-sources", action="store_true",
+                          help="Verify every case still points at a real heading in "
+                               "prompts/GM_INSTRUCTIONS.md. Exits non-zero on drift.")
+
     p_earn = sub.add_parser(
         "earn-coverage",
         help="Play a fixed set of real turns through the real commit pipeline "
@@ -659,6 +712,8 @@ def main():
         "bootstrap": cmd_bootstrap,
         "commit": cmd_commit,
         "audit": cmd_audit,
+        "gm-cases": cmd_gm_cases,
+        "list-gm-cases": cmd_gm_cases,
         "earn-coverage": cmd_earn_coverage,
         "loop": cmd_loop,
         "export": cmd_export,
