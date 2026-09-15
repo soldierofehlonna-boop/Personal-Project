@@ -17,13 +17,29 @@ reliably they follow a long, rule-heavy system prompt over many turns.
   periodic continuity audit (`GM_INSTRUCTIONS.md`'s "Continuity audit"
   section) and the playtest audit (`python3 scripts/session.py audit`) to
   catch drift the marker system can't.
-- **This project doesn't run the LLM itself.** Nothing in `scripts/` makes
-  its own API calls to a model — narration always happens in whatever chat
-  interface you're using (Claude's app, a browser, etc.), separately from
-  the tooling described in `docs/OPERATING.md`. If you want the tooling
-  itself to call a model automatically (for example, an automated prose-tone
-  judge), that would need to be built as new, separate functionality with
-  its own API credentials — it doesn't exist in this project currently.
+- **The campaign tooling doesn't run the LLM itself.** Nothing in the
+  play path — `commit_state.py`, `validate_state.py`, `self_critique.py`,
+  `turn_gate.py` — makes its own API calls to a model. Narration always
+  happens in whatever chat interface you're using (Claude's app, a
+  browser, etc.), separately from the tooling described in
+  `docs/OPERATING.md`, and committing a turn never needs network access
+  to anything but your git remote.
+
+  One script is an exception, and it is deliberately outside the play
+  path: `scripts/adversarial_stress_test.py --auto-gm` calls the
+  Anthropic Messages API directly to draft responses to adversarial
+  prompts, so the pipeline has something to chew on without a human
+  pasting turns in by hand. It is a test harness for a throwaway
+  campaign, opt-in behind a flag, and needs credentials you supply
+  yourself; no other mode of that script, and no part of committing a
+  real turn, touches it. See that file's docstring for why the manual
+  `--submit-gm-case` path tests something more faithful.
+
+  If you want the *play path* tooling to call a model automatically (for
+  example, an automated prose-tone judge on every commit), that is still
+  new, separate functionality with its own API credentials, and it does
+  not exist in this project — see the semantic-gap section below for what
+  it would buy and what it would cost.
 
 ## What a model needs to be good at for this to work well
 
@@ -63,13 +79,19 @@ structurally cannot do no matter how many phrase variants are added.
   metonymy cases above ("the sword at his hip") on its own — those need
   coreference resolution too (what does "the sword" refer to in this
   scene), which in practice means a heavier local model, not just a
-  parser. Real memory cost if you go this route: loading
+  parser. Real resource cost if you go this route: loading
   `en_core_web_sm` alone measures at roughly 150–250MB resident, growing
-  further under repeated calls per spaCy's own issue tracker — a real
-  consideration on `VM.Standard.E2.1.Micro`'s ~1GB ceiling with no swap
-  by default (see `LOCAL.md`), much less so on `VM.Standard.A1.Flex`'s
-  larger allocation. Neither shape costs more money either way — this is
-  a memory-headroom question, not a billing one.
+  further under repeated calls per spaCy's own issue tracker. Neither of
+  the two ways this project is actually run is memory-constrained at that
+  scale, though — `LOCAL.md`'s device list is your own computer (Remote
+  Control) or an Anthropic-managed sandbox (Cloud Sessions), not a
+  small self-hosted VM. The cost that does land is setup, and it lands
+  unevenly: Remote Control installs the model once and keeps it, while a
+  Cloud Session starts from a fresh container every time and would
+  re-download it on every `session.py setup`. That is the one place
+  adopting spaCy would dent `LOCAL.md`'s "runs identically under either
+  mode" claim. It costs no money either way — this is a
+  setup-time question, not a billing one.
 - **Leaning on the human**, which is what this project already does and
   costs nothing to build further: the continuity audit and the playtest
   audit's Pass 3 exist specifically because pattern matching can't do

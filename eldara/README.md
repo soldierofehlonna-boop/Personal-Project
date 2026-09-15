@@ -84,6 +84,7 @@ choice, and `prompts/FIRST_MESSAGE.md` if this is a brand-new campaign.
 | `docs/OPERATING.md` | How the tooling actually fits together, and why narration stays external. |
 | `docs/RECOVERY.md` | What to do if state gets corrupted or a hard rule is broken mid-session. |
 | `docs/MODEL_NOTES.md` | Notes on running this with different LLMs. |
+| `docs/DEVICES_AND_SERVICES.md` | Which devices, services and credentials the project depends on, and what adopting a parser or an API judge would add to that list. |
 | `docs/lore_keywords.json` | Keyword → lore-section mapping backing `scripts/world_info_lookup.py`. Data, not code — add a new keyword here rather than editing the script. |
 | `state_schema.json` | The schema `saves/current.json` is validated against. |
 | `saves/current.json` | The single source of truth for Chad's current state. |
