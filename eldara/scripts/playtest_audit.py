@@ -203,6 +203,48 @@ def pass2_adversarial(tmp_dir):
     ok = (code2 != 0) and "is_new_npc" in out2
     results.append(("validate_state.py rejects is_new_npc=false for an unregistered id", ok, out2))
 
+    # 2b. validate_state.py must reject two npc_ids that differ only by
+    #     case. Adversarial testing found both accepted as distinct new
+    #     NPCs, because npc_id was the one identifier still compared as
+    #     an exact string while gear names and thread text were already
+    #     normalized. scripts/adversarial_stress_test.py covers this too,
+    #     but only against a turn-0 throwaway campaign that it commits
+    #     to -- so the guard belongs here as well, where `session.py
+    #     audit` runs it every time against a scratch directory.
+    bad2c = json.loads(json.dumps(base))
+    bad2c["npc_relationships"] = [
+        {"npc_id": "__adversarial_case__", "name": "Variant A", "is_new_npc": True},
+        {"npc_id": "__Adversarial_Case__", "name": "Variant B", "is_new_npc": True},
+    ]
+    bad2c_path = tmp_dir / "bad_npc_id_case_variance.json"
+    bad2c_path.write_text(json.dumps(bad2c), encoding="utf-8")
+    code2c, out2c = run_script(["scripts/validate_state.py", str(bad2c_path)])
+    ok = (code2c != 0) and "differing only by case" in out2c
+    results.append(("validate_state.py rejects two npc_ids differing only by case", ok, out2c))
+
+    # 2c. The registry lookup behind that rejection must resolve an id
+    #     across case, checked directly rather than through a commit.
+    #     validate_state.py blocks two variants inside ONE state, but a
+    #     variant of an id registered on an EARLIER turn passes
+    #     validation and reaches commit_state.py's update_npc_registry()
+    #     and snapshot_pruned_npcs(), which both rely on this helper to
+    #     avoid writing a second key for one person. Exercising it in
+    #     process keeps Pass 2's promise not to touch real save files --
+    #     driving that path through a commit would write to
+    #     saves/npc_registry.json for real.
+    try:
+        from validate_state import find_registered_npc_id
+        registry_fixture = {"innkeeper-maren": {"name": "Maren"}}
+        resolves_variant = find_registered_npc_id(registry_fixture, "Innkeeper-Maren") == "innkeeper-maren"
+        resolves_padded = find_registered_npc_id(registry_fixture, "  innkeeper-maren  ") == "innkeeper-maren"
+        rejects_other = find_registered_npc_id(registry_fixture, "someone-else") is None
+        ok = resolves_variant and resolves_padded and rejects_other
+        detail = (f"variant={resolves_variant} padded={resolves_padded} "
+                  f"unrelated-id-still-unregistered={rejects_other}")
+    except ImportError as e:
+        ok, detail = False, f"could not import find_registered_npc_id: {e}"
+    results.append(("npc_id registry lookup resolves one NPC across case and whitespace", ok, detail))
+
     # 3. validate_state.py must reject currency-as-gear.
     bad3 = json.loads(json.dumps(base))
     bad3["gear"] = bad3.get("gear", []) + [{"name": "gold"}]
