@@ -28,3 +28,14 @@ Self-critique: ran clean (self_critique.py passed)
 - language: null -> {"established": true, "detail": "Common tongue, learned by ear over the first days"}
 - turn: 1 -> 2
 
+
+### Turn 3 — 2026-09-15 22:40 UTC
+
+_Turn 3: first NPC relationship (Maren)_
+
+Self-critique: ran clean (self_critique.py passed)
+
+- commit_token: "2-a50122" -> "3-6c18bd"
+- npc_relationships: null -> [{"npc_id": "innkeeper-maren", "name": "Maren", "disposition": "wary but not unkind", "note": "Runs the inn where Chad first woke; gave him the cloak.", "last_referenced_turn": 3}]
+- turn: 2 -> 3
+

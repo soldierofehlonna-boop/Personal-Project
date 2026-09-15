@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "turn": 2,
+  "turn": 3,
   "in_world_date": {
     "day": 1,
     "month": "Seedmonth",
@@ -50,5 +50,14 @@
     "established": true,
     "detail": "Common tongue, learned by ear over the first days"
   },
-  "commit_token": "2-a50122"
+  "npc_relationships": [
+    {
+      "npc_id": "innkeeper-maren",
+      "name": "Maren",
+      "disposition": "wary but not unkind",
+      "note": "Runs the inn where Chad first woke; gave him the cloak.",
+      "last_referenced_turn": 3
+    }
+  ],
+  "commit_token": "3-6c18bd"
 }
