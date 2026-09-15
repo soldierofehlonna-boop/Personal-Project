@@ -51,3 +51,15 @@ Self-critique: ran clean (self_critique.py passed)
 - status: [] -> ["twisted ankle, favors it going down stairs"]
 - turn: 3 -> 4
 
+
+### Turn 5 — 2026-09-15 22:40 UTC
+
+_Turn 5: open thread with deadline (rent due)_
+
+Self-critique: ran clean (self_critique.py passed)
+
+- commit_token: "4-5f82d3" -> "5-0a7ab1"
+- npc_relationships: [{"npc_id": "innkeeper-maren", "name": "Maren", "disposition": "wary but not unkind", "note": "Runs the inn where Chad first woke; gave him the cloak."}] -> [{"npc_id": "innkeeper-maren", "name": "Maren", "disposition": "wary but not unkind", "note": "Runs the inn where Chad first woke; gave him the cloak.", "last_referenced_turn": 5}]
+- open_threads: null -> [{"text": "Maren wants payment for the room by the week's end", "added_turn": 5, "active": true, "deadline_turn": 12}]
+- turn: 4 -> 5
+

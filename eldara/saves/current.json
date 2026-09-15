@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "turn": 4,
+  "turn": 5,
   "in_world_date": {
     "day": 1,
     "month": "Seedmonth",
@@ -57,8 +57,17 @@
       "npc_id": "innkeeper-maren",
       "name": "Maren",
       "disposition": "wary but not unkind",
-      "note": "Runs the inn where Chad first woke; gave him the cloak."
+      "note": "Runs the inn where Chad first woke; gave him the cloak.",
+      "last_referenced_turn": 5
     }
   ],
-  "commit_token": "4-5f82d3"
+  "open_threads": [
+    {
+      "text": "Maren wants payment for the room by the week's end",
+      "added_turn": 5,
+      "active": true,
+      "deadline_turn": 12
+    }
+  ],
+  "commit_token": "5-0a7ab1"
 }
