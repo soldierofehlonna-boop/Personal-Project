@@ -85,6 +85,7 @@ choice, and `prompts/FIRST_MESSAGE.md` if this is a brand-new campaign.
 | `docs/RECOVERY.md` | What to do if state gets corrupted or a hard rule is broken mid-session. |
 | `docs/MODEL_NOTES.md` | Notes on running this with different LLMs. |
 | `docs/lore_keywords.json` | Keyword → lore-section mapping backing `scripts/world_info_lookup.py`. Data, not code — add a new keyword here rather than editing the script. |
+| `docs/gm_cases.json` | The GM's situational cases (trigger → required action) extracted from `prompts/GM_INSTRUCTIONS.md`, each carrying the exact heading it came from. Data, not code — backs `scripts/gm_cases.py`. |
 | `state_schema.json` | The schema `saves/current.json` is validated against. |
 | `saves/current.json` | The single source of truth for Chad's current state. |
 | `saves/journal.md` | Auto-generated, mechanical log of state changes over time. |
@@ -94,6 +95,7 @@ choice, and `prompts/FIRST_MESSAGE.md` if this is a brand-new campaign.
 | `saves/player_notes.md` | Out-of-character preferences (pacing, tone, content limits) — never narrated. |
 | `scripts/session.py` | Single entry point for setup, checks, commits, audits, and earning coverage. `bootstrap` runs setup + check + start in one pass. |
 | `scripts/location_lookup.py` | Look up a tracked place or the travel duration between two, from `saves/locations.json` — the fixed-coordinate "world map" analog. Read-only and advisory, like `world_info_lookup.py`. |
+| `scripts/gm_cases.py` | List the GM's situational cases, or just the ones mechanically live against the current save (`--due`). `--check-sources` fails if a case's `GM_INSTRUCTIONS.md` heading has moved, so the index can't go stale silently — Pass 2 of the audit runs it. |
 | `scripts/add_lore.py` | Add a new lore section to `docs/ELDARA_REFERENCE.md`/`docs/CHAD_BACKSTORY.md` and/or register keyword(s) for it in `docs/lore_keywords.json`, in one command instead of hand-editing both. |
 | `scripts/export_save.py` | Bundle `current.json`, `journal.md`, `locations.json` and `npc_registry.json` into one shareable/archivable file. Excludes `player_notes.md` unless `--include-player-notes` is passed. |
 | `saves/dashboard/campaign_dashboard.html` | Standalone, offline dashboard. Open directly in a browser and paste in the contents of `current.json` (and optionally `locations.json`/`npc_registry.json`, or an `export_save.py` bundle's `current_state` field) to view a glanceable status summary. Never writes back to any save file. |

@@ -106,6 +106,18 @@ python3 scripts/session.py start
 
 Validates the current save and prints a status summary before play begins. Run `python3 scripts/session.py setup` once beforehand on a freshly cloned copy of this project, and `python3 scripts/session.py check` any time to confirm the environment is in good order. See `LOCAL.md` for what "the environment" means concretely (an SSH session into a small always-on VM).
 
+### Looking up a case instead of re-reading this file
+
+Everything below is the contract, and it stays authoritative — but mid-scene the question is usually narrow ("the player just said 'audit state' — what exactly runs?", "an NPC from turn 12 walked back on — new `npc_id` or the old one?"). `python3 scripts/gm_cases.py` (also `python3 scripts/session.py gm-cases`) is the index over this file for exactly that: every trigger → required action pair, each tagged with the heading here it came from.
+
+```
+python3 scripts/gm_cases.py npc          # cases matching "npc"
+python3 scripts/gm_cases.py --due        # what's live against the save right now
+python3 scripts/gm_cases.py --category player
+```
+
+`--due` reports only what can be read mechanically off `saves/current.json` — turn 0, a multiple-of-20 turn, an array at its soft cap, a lapsed deadline, travel in progress, perishables still held. It is not a checklist that goes green: the cases with no mechanical condition (most of them — "a scene calls for a solution from Chad" isn't a JSON field) are never "not due", and an empty `--due` result says nothing about whether this turn followed the Design Pillars. Read the section itself before acting on anything that isn't obvious from the one-line summary; `docs/gm_cases.json` never adds or softens a rule, and if it ever disagrees with this file, this file wins.
+
 ### After any state-changing scene
 
 1. Draft the proposed state as a complete JSON object — copy `saves/current.json` and apply only what actually changed this turn — and write it to a scratch file (e.g. `/tmp/proposed_state.json`) on the machine running the tooling. Never hand-edit `saves/current.json` directly.
