@@ -63,6 +63,29 @@ self_critique.py's 35-word list misses ALL fourteen today. On this
 sample, first-sense WordNet catches eight of them while introducing zero
 new false positives -- strictly better than the list it would replace.
 
+WHY IT IS ADVISORY AND NOT A GATE
+---------------------------------
+The 33-word set above is abstractions and weapons, which is not what
+ordinary narration is made of. Tested against 63 everyday "his X" nouns
+plus scene furniture, the broad 'artifact' category flags 12 of 14 scene
+nouns -- room, bed, chair, door, window, cup, bowl, cot, saddle, pocket.
+"He returned to his room" is not an inventory violation, and a check that
+refused that commit would teach the author to reach for --skip-critique.
+
+Narrowing the categories does not rescue it either:
+
+    artifact (broad)   items 12/12   false positives 12/14
+    portable-only       items  6/12   false positives  4/14
+    + equipment/device  items  7/12   false positives  6/14
+
+No category reaches the precision a blocking check needs. So
+self_critique.py consumes this through advisory_item_notices() below, in
+the advisory pass that already exists for looser matching, using
+PORTABLE_ROOTS plus the four measured exclusions in NOT_INVENTORY. That
+combination fires on 4 of 78 ordinary nouns, and two of those four --
+'coat' and 'shirt' -- are arguably correct, since Chad's baseline gear
+has neither and unlisted clothing is a real violation.
+
 WHAT IT STILL CANNOT DO
 -----------------------
 WordNet resolves vocabulary, not reference. It does not know that "the
@@ -105,33 +128,63 @@ CURRENT_PATH = ROOT / "saves" / "current.json"
 # slip through a looser test against 'physical_entity'.
 ITEM_ROOTS = {"artifact", "instrumentality", "instrument"}
 
+# A narrower set, for the advisory self_critique.py actually uses. Broad
+# 'artifact' catches every item but also every piece of scenery -- a room,
+# a door, a window, a chair and a bed are all artifacts, and "he returned
+# to his room" is not an inventory violation. Restricting to things a
+# person carries trades recall for a signal worth reading.
+PORTABLE_ROOTS = {"weapon", "clothing", "container", "tool", "implement"}
 
-def load_wordnet():
-    """Return the WordNet corpus reader, or None with a printed reason.
+# Nouns PORTABLE_ROOTS still gets wrong, found by testing rather than
+# guessed at: a cup and a bowl are containers, a pocket is clothing, and
+# WordNet's first sense of 'knuckles' is brass knuckles. Four exclusions
+# discovered by measurement is a different kind of list from thirty-five
+# inclusions written from memory, but it is still a list -- add to it only
+# with a case that actually fired.
+NOT_INVENTORY = {"pocket", "cup", "bowl", "knuckles"}
+
+
+_WORDNET = None
+_WORDNET_TRIED = False
+
+
+def load_wordnet(quiet=False):
+    """The WordNet corpus reader, or None. Loads once per process.
 
     Kept optional in the same spirit as validate_state.py's handling of
-    jsonschema: a machine without the corpus should get a clear message,
-    not a traceback.
+    jsonschema: a machine without the corpus gets a clear message, not a
+    traceback. quiet=True suppresses that message, for callers that
+    report absence in their own words -- self_critique.py runs on every
+    commit and says it once, in the advisory section.
     """
+    global _WORDNET, _WORDNET_TRIED
+    if _WORDNET_TRIED:
+        return _WORDNET
+    _WORDNET_TRIED = True
     try:
         from nltk.corpus import wordnet
     except ImportError:
-        print("nltk is not installed -- `pip install nltk`, then "
-              "`python -m nltk.downloader wordnet`.")
+        if not quiet:
+            print("nltk is not installed -- `pip install nltk`, then "
+                  "`python -m nltk.downloader wordnet`.")
         return None
     try:
         wordnet.synsets("test", pos=wordnet.NOUN)
     except LookupError:
-        print("nltk is installed but the WordNet corpus is missing -- run "
-              "`python -m nltk.downloader wordnet`.")
+        if not quiet:
+            print("nltk is installed but the WordNet corpus is missing -- run "
+                  "`python -m nltk.downloader wordnet`.")
         return None
+    _WORDNET = wordnet
     return wordnet
 
 
 @functools.lru_cache(maxsize=4096)
 def _chains(noun, first_sense_only):
     """Hypernym chains for a noun, as sets of lemma names."""
-    wn = load_wordnet.cached
+    wn = load_wordnet(quiet=True)
+    if wn is None:
+        return []
     senses = wn.synsets(noun.lower(), pos=wn.NOUN)
     if first_sense_only:
         # WordNet orders senses by frequency, so the first is the
@@ -145,9 +198,34 @@ def _chains(noun, first_sense_only):
     ]
 
 
-def is_item(noun, first_sense_only=True):
+def is_item(noun, first_sense_only=True, roots=None):
     """Is this noun a man-made object, per WordNet?"""
-    return any(ITEM_ROOTS & chain for chain in _chains(noun, first_sense_only))
+    roots = ITEM_ROOTS if roots is None else roots
+    return any(roots & chain for chain in _chains(noun, first_sense_only))
+
+
+def advisory_item_notices(text, gear_names):
+    """Possessed nouns that look like carried items but aren't in gear.
+
+    This is the entry point self_critique.py uses, and it is advisory by
+    construction -- see this module's MEASURED RESULT section for why no
+    root set reached blocking-grade precision.
+    """
+    if load_wordnet(quiet=True) is None:
+        return None
+    known = {g.strip().lower() for g in gear_names if g}
+    notices = []
+    for noun, phrase in sorted(possessed_nouns(text).items()):
+        if noun in NOT_INVENTORY:
+            continue
+        if any(noun in name or name in noun for name in known):
+            continue
+        if is_item(noun, first_sense_only=True, roots=PORTABLE_ROOTS):
+            notices.append(
+                f"possible unlisted carried item: \"{phrase}\" -- '{noun}' reads as "
+                "something Chad would carry, but no gear entry matches it"
+            )
+    return notices
 
 
 # Possession shapes, deliberately the same ones self_critique.py already
@@ -213,11 +291,9 @@ MUST_FLAG = [
 
 
 def self_test():
-    wn = load_wordnet()
-    if wn is None:
+    if load_wordnet() is None:
         print("\nCannot score the classifier without the corpus -- see above.")
         return 1
-    load_wordnet.cached = wn
 
     print("Scoring WordNet item-classification against labelled nouns.\n")
     overall_ok = True
@@ -248,7 +324,6 @@ def explain(noun):
     wn = load_wordnet()
     if wn is None:
         return 1
-    load_wordnet.cached = wn
     senses = wn.synsets(noun.lower(), pos=wn.NOUN)
     if not senses:
         print(f"'{noun}' is not in WordNet as a noun.")
@@ -265,10 +340,8 @@ def explain(noun):
 
 
 def run_check(path):
-    wn = load_wordnet()
-    if wn is None:
+    if load_wordnet() is None:
         return 1
-    load_wordnet.cached = wn
     text = Path(path).read_text(encoding="utf-8")
     flags = check(text, load_gear_names())
     if not flags:

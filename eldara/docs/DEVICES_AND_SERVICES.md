@@ -44,6 +44,14 @@ git.
 to its own manual checks and says so when the package is missing.
 Everything else in `scripts/` is standard library.
 
+`nltk` is a second optional one, not listed in `requirements.txt` and not
+installed by default. When it and the WordNet corpus are present,
+`self_critique.py` adds one advisory notice about possessed nouns that
+read as carried items without a matching gear entry; without it that
+notice is off and nothing else changes. It needs no service, no
+credential, and no network at commit time — the corpus is a one-time
+download of roughly 10MB. See `scripts/semantic_gear_check.py`.
+
 **What crosses the network, and when**
 
 - **At commit time:** the git push only. Validation, the critique gate,

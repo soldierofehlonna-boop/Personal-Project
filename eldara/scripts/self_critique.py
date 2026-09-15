@@ -22,8 +22,17 @@ or by what it does, will still pass the hard FLAGGED/CLEAN check silently.
 Closing that class of gap for real would need semantic judgment (e.g. an
 LLM call), not another regex -- see docs/MODEL_NOTES.md.
 
-Advisory notices: advisory_gear_mentions() and advisory_structural_notes()
-below report on that exact remaining gap -- broader, looser proximity
+One piece of that has since been closed partway, on the vocabulary side
+rather than the reference side: advisory_semantic_items() asks WordNet
+whether a possessed noun is the kind of thing a person carries, so "his
+falchion" no longer depends on someone having written 'falchion' into a
+list. It is advisory because no WordNet category was precise enough to
+block on -- the measurements are in scripts/semantic_gear_check.py. It
+does nothing for "the sword at his hip", which is reference, not
+vocabulary.
+
+Advisory notices: advisory_gear_mentions(), advisory_structural_notes()
+and advisory_semantic_items() below report on that exact remaining gap -- broader, looser proximity
 matching that never blocks a commit (the exit code only reflects the hard
 checks above). This is a genuine, deliberate trade: because these notices
 can't fail a commit, they can afford to be noisier than the hard checks
@@ -268,6 +277,42 @@ def advisory_structural_notes(text):
     return notices
 
 
+def advisory_semantic_items(text, state):
+    """Advisory: nouns the narration hands Chad that WordNet reads as
+    carried items, with no gear entry to match.
+
+    Where check_invented_gear() above tests a possessed noun against a
+    fixed list of 35 weapon words, this asks WordNet whether the noun is
+    the kind of thing a person carries. That is what stops "his falchion"
+    and "his waterskin" -- words the list has never heard of -- from
+    passing in complete silence.
+
+    Advisory rather than blocking, and that is a measured decision rather
+    than caution. No WordNet category reaches the precision a gate needs:
+    against ordinary prose the broad "artifact" category flags "his
+    room", "his bed", "his chair" and "his door", none of which is an
+    inventory violation, while the narrower category used here drops
+    those but still catches "his pocket" and "his cup" and finds only
+    half the items. Blocking on that would train the author to reach for
+    --skip-critique, and a gate that gets skipped catches nothing.
+    scripts/semantic_gear_check.py holds the numbers; --self-test re-runs
+    them.
+
+    Returns None (not an empty list) when WordNet isn't installed, so
+    main() can say so once instead of treating it as a notice.
+    """
+    scripts_dir = str(Path(__file__).resolve().parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    try:
+        from semantic_gear_check import advisory_item_notices
+    except ImportError:
+        return None
+    gear = state.get("gear", [])
+    gear_names = [g.get("name", "") for g in gear if isinstance(g, dict)]
+    return advisory_item_notices(text, gear_names)
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: python3 scripts/self_critique.py <path-to-drafted-turn.txt>")
@@ -298,6 +343,16 @@ def main():
     advisory_notices = []
     advisory_notices.extend(advisory_gear_mentions(text, state))
     advisory_notices.extend(advisory_structural_notes(text))
+    semantic_notices = advisory_semantic_items(text, state)
+    if semantic_notices is None:
+        # Same convention validate_state.py uses for jsonschema: name the
+        # optional dependency once, as a parenthetical, rather than
+        # letting its absence look like a clean result.
+        print("(nltk/WordNet not installed -- the semantic unlisted-item advisory "
+              "is off; `pip install nltk` then `python -m nltk.downloader wordnet` "
+              "enables it)")
+    else:
+        advisory_notices.extend(semantic_notices)
 
     if all_flags:
         print("FLAGGED: review before committing.")
