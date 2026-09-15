@@ -40,6 +40,7 @@ commit_state.py's --skip-lore-check docstring for how it's wired in).
 Advisory notices go to stdout; a human (or, per docs/MODEL_NOTES.md, a
 future LLM-based judge) decides what to do with them.
 """
+import json
 import re
 import sys
 from pathlib import Path
@@ -52,33 +53,33 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 import world_info_lookup as wil  # noqa: E402
 
 
-# A short, hand-curated list of facts worth checking directly rather than
-# only through generic retrieval -- the lore equivalent of self_critique's
-# CURRENCY_WORDS/UNEARNED_ATTRACTION_PHRASES lists. Deliberately small:
-# this is the "pinned facts" idea (see Auferet's pinned-facts feature)
-# applied as a hard-confidence check, not an attempt to cover all lore.
-# Each entry: a real, unambiguous fact drawn from docs/CHAD_BACKSTORY.md
-# or docs/ELDARA_REFERENCE.md, plus regex(es) whose match in drafted
+# Pinned facts -- the lore equivalent of self_critique's
+# CURRENCY_WORDS/UNEARNED_ATTRACTION_PHRASES lists -- live in
+# saves/pinned_facts.json rather than here, so a fact established during
+# play can be added without editing this script's source (this is
+# Auferet's pinned-facts feature: short "never forget" one-liners a
+# player can pin as the campaign goes, not just pre-authored lore). Each
+# entry: a real, unambiguous fact, plus regex(es) whose match in drafted
 # narration would contradict it. Kept to facts that are both load-bearing
 # and cheap to check textually -- not an attempt to cover every lore fact,
 # the same way self_critique.py's weapon-word list doesn't try to cover
 # every possible item.
-PINNED_FACT_CHECKS = [
-    {
-        "name": "Chad's phone/wallet/keys",
-        "established_fact": (
-            "explicitly non-recoverable and 'shouldn't become a plot "
-            "thread' per docs/CHAD_BACKSTORY.md, 'What he doesn't have "
-            "anymore' -- narration having Chad use, check, or recover any "
-            "of the three contradicts this directly, not just tonally."
-        ),
-        "contradiction_patterns": [
-            r"\bchecks? his phone\b", r"\bhis phone (?:buzzes|rings|lights up|vibrates)\b",
-            r"\bfinds? his (?:old\s+)?wallet\b", r"\brecovers? his wallet\b",
-            r"\buses? his (?:old\s+)?keys\b",
-        ],
-    },
-]
+PINNED_FACTS_PATH = ROOT / "saves" / "pinned_facts.json"
+
+
+def load_pinned_facts():
+    """Reads saves/pinned_facts.json. Advisory-only by construction, like
+    the rest of this script: a missing or malformed file is reported and
+    skipped rather than treated as an error, since this check never
+    blocks a commit either way."""
+    if not PINNED_FACTS_PATH.exists():
+        return []
+    try:
+        facts = json.loads(PINNED_FACTS_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"NOTE: could not read {PINNED_FACTS_PATH.relative_to(ROOT)} ({e}) -- skipping pinned-fact checks.")
+        return []
+    return facts
 
 
 def load_narration(path):
@@ -134,8 +135,8 @@ def retrieve_relevant_lore(keywords):
                 yield key, label, body
 
 
-def check_pinned_facts(text):
-    """Hard-confidence check against the small curated list above. Kept
+def check_pinned_facts(text, pinned_facts):
+    """Hard-confidence check against saves/pinned_facts.json. Kept
     separate from the general retrieval pass below because these are
     checked directly against known-contradictory phrasing, not just
     flagged for a human to cross-reference -- the closest thing this
@@ -144,7 +145,7 @@ def check_pinned_facts(text):
     stay advisory-only for now)."""
     notices = []
     normalized = text
-    for fact in PINNED_FACT_CHECKS:
+    for fact in pinned_facts:
         for pattern in fact["contradiction_patterns"]:
             m = re.search(pattern, normalized, re.IGNORECASE | re.DOTALL)
             if m:
@@ -170,7 +171,7 @@ def main():
     text = load_narration(path)
 
     keywords = extract_candidate_keywords(text)
-    pinned_notices = check_pinned_facts(text)
+    pinned_notices = check_pinned_facts(text, load_pinned_facts())
 
     if not keywords and not pinned_notices:
         print("LORE CHECK: no known lore keywords matched in this turn's narration.")

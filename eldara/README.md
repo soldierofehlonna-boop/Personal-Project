@@ -81,6 +81,7 @@ choice, and `prompts/FIRST_MESSAGE.md` if this is a brand-new campaign.
 | `saves/current.json` | The single source of truth for Chad's current state. |
 | `saves/journal.md` | Auto-generated, mechanical log of state changes over time. |
 | `saves/npc_registry.json` | Permanent record of every NPC id ever assigned, so identity survives pruning. |
+| `saves/pinned_facts.json` | Short, load-bearing "never forget" facts (Auferet's pinned-facts idea), hard-checked against every drafted turn by `scripts/lore_consistency_check.py`. Add to it during play as new facts get established. |
 | `saves/locations.json` | Fixed places and pairwise travel durations, sourced from `docs/ELDARA_REFERENCE.md` §2.8/§2.3. Backs `current_location`/`travel` in `saves/current.json` and `scripts/location_lookup.py`. |
 | `saves/player_notes.md` | Out-of-character preferences (pacing, tone, content limits) — never narrated. |
 | `scripts/session.py` | Single entry point for setup, checks, commits, audits, and earning coverage. |
