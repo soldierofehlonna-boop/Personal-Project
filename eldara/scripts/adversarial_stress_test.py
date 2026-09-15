@@ -133,6 +133,9 @@ ANTHROPIC_VERSION = "2023-06-01"
 # restored between cases and labels -- see restore_campaign().
 CAMPAIGN_FILES = (CURRENT_PATH, NPC_REGISTRY_PATH, JOURNAL_PATH)
 JOURNAL_TAIL_LINES = 40
+# Effort levels the effort-capable models accept. Used only to warn --
+# see the note in auto_gm() for why this never blocks a run.
+KNOWN_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 
 # The month enum is imported rather than restated: a second copy here
 # would be one more place for the calendar to drift out of agreement
@@ -576,10 +579,12 @@ def submit_gm_case(case_id, label, state_file, narration_file):
 
 
 def call_anthropic(model, effort, prompt, api_key):
-    """Real call to the Messages API. Returns (text, error) -- exactly one
-    is non-None. Never raises past this function; a network/API failure
-    is a result to record ('the model call itself failed at this
-    effort'), not a reason to crash the whole run."""
+    """Real call to the Messages API. Returns (text, error, meta) --
+    exactly one of text/error is non-None, and meta always carries what
+    the API reported about the call itself (stop_reason, the model that
+    actually served it, token usage). Never raises past this function; a
+    network/API failure is a result to record ('the model call itself
+    failed at this effort'), not a reason to crash the whole run."""
     if not GM_INSTRUCTIONS_PATH.exists():
         return None, f"GM_INSTRUCTIONS.md not found at {GM_INSTRUCTIONS_PATH}"
     system_prompt = (
@@ -591,13 +596,26 @@ def call_anthropic(model, effort, prompt, api_key):
 
     body = {
         "model": model,
-        "max_tokens": 4096,
+        # A GM case asks for a full saves/current.json plus narration, and
+        # thinking tokens are billed against this same ceiling -- on an
+        # effort-capable model thinking is on by default, and the higher
+        # the effort the more of the budget it takes. At 4096 a high-effort
+        # draft gets truncated mid-JSON, the fenced block never closes, and
+        # extract_state_and_narration() reports "no ```json block found" --
+        # a truncation logged as a parsing failure, and one that gets more
+        # likely the higher the effort, biasing the exact comparison this
+        # script exists to make. 16000 is the documented non-streaming
+        # default and leaves room for both halves.
+        "max_tokens": 16000,
         "system": system_prompt,
         "messages": [{"role": "user", "content": prompt}],
     }
-    # Effort is a real, separate request field on effort-capable models
-    # (see docs/build-with-claude/effort) -- passed through exactly as
-    # named at the CLI, not translated or guessed at.
+    # Effort is a real, separate request field on effort-capable models,
+    # nested inside output_config rather than sent top-level, and needs no
+    # beta header. Passed through exactly as named at the CLI. Thinking is
+    # left unset deliberately: on an effort-capable model it runs adaptive
+    # by default, which is the combination effort is meant to be tuned
+    # against.
     if effort:
         body["output_config"] = {"effort": effort}
 
@@ -612,18 +630,36 @@ def call_anthropic(model, effort, prompt, api_key):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        # A single high-effort request on a hard prompt can run for
+        # minutes; 120s timed out the very effort levels this script is
+        # built to compare, and recorded it as a network error.
+        with urllib.request.urlopen(req, timeout=600) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", errors="replace")
-        return None, f"HTTP {e.code}: {detail[:500]}"
+        return None, f"HTTP {e.code}: {detail[:500]}", {}
     except (urllib.error.URLError, TimeoutError) as e:
-        return None, f"network error: {e}"
+        return None, f"network error: {e}", {}
+
+    # Recorded, not assumed: the label says which model/effort was asked
+    # for, this says what actually served the request.
+    meta = {
+        "stop_reason": data.get("stop_reason"),
+        "stop_details": data.get("stop_details"),
+        "served_model": data.get("model"),
+        "usage": data.get("usage"),
+    }
+
+    # A declined prompt is a real result for an adversarial test -- the
+    # model reporting that it won't answer, at HTTP 200. Recording it as
+    # an API failure would file it under "the harness broke".
+    if meta["stop_reason"] == "refusal":
+        return None, None, meta
 
     text_blocks = [b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"]
     if not text_blocks:
-        return None, f"no text content in response: {json.dumps(data)[:500]}"
-    return "\n".join(text_blocks), None
+        return None, f"no text content in response: {json.dumps(data)[:500]}", meta
+    return "\n".join(text_blocks), None, meta
 
 
 def extract_state_and_narration(response_text):
@@ -656,12 +692,30 @@ def run_gm_case_auto(case, model, effort, api_key):
         "```json fenced code block, with your narration as ordinary text "
         "around it."
     )
-    text, call_error = call_anthropic(model, effort, ask, api_key)
+    text, call_error, meta = call_anthropic(model, effort, ask, api_key)
+    base = {
+        "case_id": case["id"], "watch_for": case["watch_for"],
+        "model": model, "effort": effort,
+        "served_model": meta.get("served_model"),
+        "stop_reason": meta.get("stop_reason"),
+        "stop_details": meta.get("stop_details"),
+        "usage": meta.get("usage"),
+    }
     if call_error:
         return {
-            "case_id": case["id"], "watch_for": case["watch_for"],
-            "model": model, "effort": effort,
+            **base,
             "call_error": call_error, "returncode": None,
+            "caught": None,
+            "stdout": "", "stderr": "", "drafted_state": None,
+            "drafted_narration": None, "raw_response": None,
+        }
+
+    # Declined at HTTP 200 -- no text to feed the pipeline, but a result
+    # worth reading against this case's watch_for, not an error.
+    if text is None:
+        return {
+            **base,
+            "call_error": None, "refused": True, "returncode": None,
             "caught": None,
             "stdout": "", "stderr": "", "drafted_state": None,
             "drafted_narration": None, "raw_response": None,
@@ -670,9 +724,12 @@ def run_gm_case_auto(case, model, effort, api_key):
     state, narration, parse_error = extract_state_and_narration(text)
     if parse_error:
         return {
-            "case_id": case["id"], "watch_for": case["watch_for"],
-            "model": model, "effort": effort,
+            **base,
             "call_error": None, "parse_error": parse_error,
+            # Distinguishes "ran out of max_tokens mid-JSON" from "drafted
+            # something with no JSON in it". Both fail to parse; only one
+            # of them is the model's answer.
+            "truncated": meta.get("stop_reason") == "max_tokens",
             "returncode": None, "caught": None, "stdout": "", "stderr": "",
             "drafted_state": None, "drafted_narration": None,
             "raw_response": text,
@@ -690,8 +747,7 @@ def run_gm_case_auto(case, model, effort, api_key):
         tmp_state_path.unlink(missing_ok=True)
 
     return {
-        "case_id": case["id"], "watch_for": case["watch_for"],
-        "model": model, "effort": effort,
+        **base,
         "call_error": None, "parse_error": None,
         # Same meaning as in the tooling half: the pipeline rejected what
         # was drafted. compare() reads this key, so a GM result that
@@ -719,6 +775,16 @@ def auto_gm(label, model, effort, api_key):
               "case commits for real.")
         return 1
 
+    # Advisory, never blocking: a typo'd level 400s on every case and
+    # wastes the whole run, but this list is a cache of what the current
+    # models accept, so it must not be able to refuse a level that is
+    # valid and simply newer than this comment.
+    if effort and effort not in KNOWN_EFFORT_LEVELS:
+        print(f"NOTE: effort {effort!r} is not one of the levels these models "
+              f"were documented to take ({', '.join(KNOWN_EFFORT_LEVELS)}). "
+              "Sending it anyway -- if it is wrong, every case below will "
+              "record the same HTTP 400.\n")
+
     baseline = snapshot_campaign()
     results = []
     print(f"Running {len(GM_PROMPT_CASES)} GM-facing cases automatically "
@@ -728,8 +794,15 @@ def auto_gm(label, model, effort, api_key):
         result = run_gm_case_auto(case, model, effort, api_key)
         if result.get("call_error"):
             print(f"   API CALL FAILED: {result['call_error']}")
+        elif result.get("refused"):
+            print(f"   MODEL DECLINED: {result.get('stop_details')}")
         elif result.get("parse_error"):
-            print(f"   COULD NOT PARSE RESPONSE: {result['parse_error']}")
+            if result.get("truncated"):
+                print("   TRUNCATED: hit max_tokens mid-draft, so no complete "
+                      "JSON block -- raise max_tokens rather than reading this "
+                      "as a refusal to draft.")
+            else:
+                print(f"   COULD NOT PARSE RESPONSE: {result['parse_error']}")
         else:
             outcome = "COMMIT REJECTED" if result["returncode"] != 0 else "COMMIT SUCCEEDED"
             print(f"   {outcome}")
@@ -808,8 +881,14 @@ def outcome_label(result):
         return "MISSING"
     if result.get("call_error"):
         return "API CALL FAILED"
+    if result.get("refused"):
+        return "MODEL DECLINED"
     if result.get("parse_error"):
-        return "UNPARSEABLE RESPONSE"
+        # Truncation and "wrote no JSON" both fail the same parse, but
+        # only the second is the model's actual answer -- the first just
+        # means max_tokens ran out mid-draft.
+        return "TRUNCATED (hit max_tokens)" if result.get("truncated") \
+            else "UNPARSEABLE RESPONSE"
     caught = result.get("caught")
     if caught is None:
         rc = result.get("returncode")
