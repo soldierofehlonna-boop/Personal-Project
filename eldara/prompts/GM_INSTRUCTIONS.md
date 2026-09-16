@@ -133,16 +133,13 @@ if someone else wrote it, and asking what it actually claims.
 
 1. **Narrate the turn.** Prose only. No JSON yet.
 
-2. **Record what the prose committed you to.** Re-read the narration you
-   just wrote and enumerate, explicitly, every concrete thing it claims:
-   - each physical object it puts in Chad's possession — including by
-     description or location rather than by name ("the weapon in his
-     hand", "the blade at his hip"), which is the exact shape
-     `scripts/self_critique.py` cannot catch for you
-   - each person named or met
-   - each commitment, debt, or deadline anyone accepted
-   - each injury, cost, or condition that landed
-   - each change of place or date
+2. **Record what the prose committed you to.** Re-read the narration as if
+   someone else wrote it and ask what it actually claims — objects it put
+   in Chad's possession, including ones named by description or location
+   rather than by name ("the weapon in his hand"), which is the exact
+   shape `scripts/self_critique.py` cannot catch for you; people met;
+   commitments and deadlines accepted; costs that landed; changes of place
+   or date.
 
    Then draft the proposed state as a complete JSON object — copy
    `saves/current.json` and apply only what actually changed — and write

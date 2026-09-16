@@ -113,7 +113,7 @@
       "trigger": "A scene changed Chad's state (gear, currency, injuries, an NPC relationship, an open thread, the date).",
       "action": "Three stages, in order, not collapsed into one. Finish the narration first. Then re-read it and enumerate what it actually claims -- every object it puts in Chad's possession including ones named by description or location, every person met, every commitment or deadline accepted, every cost that landed, every change of place or date. Only then copy saves/current.json, apply only what actually changed, write it to a scratch file and run 'python3 scripts/session.py commit /tmp/proposed_state.json --note \"...\"'. If the enumeration turns up an item the closed-inventory rule forbids, the narration is what is wrong -- redraft it rather than quietly reconciling either side. Never hand-edit saves/current.json directly. If it was already directly edited (a docs/RECOVERY.md restore), run commit with no file argument instead.",
       "source": "After any state-changing scene",
-      "source_digest": "de04224baebe"
+      "source_digest": "1bd784ca085c"
     },
     {
       "id": "self_critique_gate",
