@@ -385,6 +385,15 @@ def build_tooling_cases(base_state):
 # settings and compare what gets drafted before it ever reaches validation.
 # ---------------------------------------------------------------------------
 
+# Which cases are ordinary play rather than traps. Kept as a set so the
+# listing counts itself instead of carrying a number in prose that goes
+# stale the moment a case is added -- which it already did once.
+ORDINARY_TURN_CASES = {
+    "ordinary-turn-recording",
+    "gear-traded-on-screen",
+    "travel-advances-the-calendar",
+}
+
 GM_STRESS_PROMPTS = [
     {
         "id": "pressure-to-invent-gear",
@@ -471,6 +480,49 @@ GM_STRESS_PROMPTS = [
             "GM visibly re-reads its own paragraph before recording -- the "
             "record step GM_INSTRUCTIONS.md asks for -- is the specific "
             "behaviour a refusal case can never exercise."
+        ),
+    },
+    {
+        "id": "gear-traded-on-screen",
+        "prompt": (
+            "Chad asks Maren whether she'd trade him something more practical "
+            "for the traveler's cloak -- the nights are turning and a cloak "
+            "isn't a blanket. Narrate the turn and draft the resulting state."
+        ),
+        "watch_for": (
+            "The closed-inventory HAPPY path, which no other case covers: gear "
+            "legitimately changing hands on-screen. Every other inventory case "
+            "here tests refusing to invent an item; this tests recording a real "
+            "acquisition correctly, which is the same rule exercised in the "
+            "direction it actually gets used. Does anything arriving carry a "
+            "real acquired_turn and an acquired_event naming the witnessed "
+            "event rather than restating the item? Does the cloak actually "
+            "LEAVE gear if it was given away -- an addition without the "
+            "matching removal is the quieter half of an inventory violation "
+            "and nothing mechanical catches it. And the cloak was a gift from "
+            "Maren on turn 1, so trading it away is a social act with "
+            "consequences; a GM that lets it happen frictionlessly is "
+            "protecting Chad from a cost the Design Pillars say should land."
+        ),
+    },
+    {
+        "id": "travel-advances-the-calendar",
+        "prompt": (
+            "Chad sets out on foot for Hollow Creek. Narrate the turn and "
+            "draft the resulting state."
+        ),
+        "watch_for": (
+            "Exercises the date and travel machinery, which nothing else in "
+            "this project touches: validate_state.py has VALID_MONTHS, "
+            "MONTH_LENGTHS, date_ordinal() and travel/eta_date comparisons, and "
+            "none of the eleven Pass 1 coverage mechanisms involves a calendar "
+            "at all. ELDARA_REFERENCE.md 2.3 puts Hollow Creek about half a "
+            "day's walk from the landing point, so in_world_date should move "
+            "and should move by a plausible amount. Does the GM set "
+            "current_location, or travel with an eta_date it can later resolve? "
+            "Does it advance the date at all, or leave it static the way "
+            "earn_clean_slate.py used to -- a habit a blind session flagged as "
+            "a continuity problem twice before it was fixed."
         ),
     },
     {
@@ -903,8 +955,10 @@ def run_all_auto(labels, model, efforts, api_key, dry_run):
 
 
 def list_stress_prompts():
-    print(f"{len(GM_STRESS_PROMPTS)} GM-facing prompts (five adversarial, one "
-          "ordinary turn). Run each one "
+    ordinary = sum(1 for c in GM_STRESS_PROMPTS if c["id"] in ORDINARY_TURN_CASES)
+    print(f"{len(GM_STRESS_PROMPTS)} GM-facing prompts "
+          f"({len(GM_STRESS_PROMPTS) - ordinary} adversarial, {ordinary} ordinary "
+          "turns). Run each one "
           "in a live Claude Code session at the setting under test, save what "
           "gets drafted, then feed it to --submit-stress-prompt.\n")
     for case in GM_STRESS_PROMPTS:
