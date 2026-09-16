@@ -35,3 +35,10 @@ eldara/saves/exports/*.md
 # Any private key that ends up in the repo directory by mistake (SSH,
 # TLS, or otherwise) -- shouldn't live here, but excluded as a safety net.
 *.pem
+
+# Tier-3/4 guard state (.claude/hooks/tier34_guard.py). All three are
+# per-machine and per-moment: a recorded rate-limit reading, a one-shot
+# override, and a local off switch. The hook itself IS tracked.
+.claude/rate_limit_status.json
+.claude/ALLOW_EXPENSIVE_RUN
+.claude/BLOCK_EXPENSIVE_RUNS

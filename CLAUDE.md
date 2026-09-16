@@ -50,9 +50,23 @@ nested-session run:
   reset time and offer tier 0-2 work instead.
 - anything else — stop and report.
 
-Note the window is `five_hour` and rolling. Daily and weekly figures are
-**not** exposed anywhere reachable from a session; do not report them as
-if they were, and do not extrapolate them from the five-hour number.
+**Read `rateLimitType` too — it changes.** This field reports whichever
+window is currently binding, not a fixed one. It was observed as
+`five_hour` and then, once that window reset, as `seven_day` with a reset
+four days out. An earlier version of this file claimed only a rolling
+five-hour window existed and that weekly figures were unreachable; that
+was wrong, and it was wrong in the expensive direction — it would have
+read a multi-day constraint as one that clears this afternoon.
+
+So report `status`, `rateLimitType` and `resetsAt` together. "Warning,
+resets in four hours" and "warning, resets in four days" are the same
+status and completely different decisions.
+
+What is still true: there is no remaining-percentage or token-budget
+number anywhere reachable, and nothing on disk carries live rate-limit
+state (`~/.claude.json` has only feature flags). Do not invent a
+remaining figure, and do not extrapolate one window's number into
+another's.
 
 `scripts/session_cost_guide.py` prints the tier table with costs
 recomputed from whatever run artifacts are actually on disk, so the
