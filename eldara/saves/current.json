@@ -52,5 +52,8 @@
       "note": "Old stonework where Chad landed, vines structural, one corner roofed by fallen lintels. Used regularly by ONE person, not a camp: a single sitting-patch with heel-scuffs and a round set-down mark for a flat-bottomed pot, 11 pieces of seasoned wood cut with an axe (not a saw) and stacked dry, and a fire ring with at least two fires' worth of layered ash. NO water at or near the ruin -- searched and not found."
     }
   ],
-  "commit_token": "2-6f31e2"
+  "commit_token": "2-8674dd",
+  "continuity_notes": [
+    "Turn 2: the narration called Chad's muttered word 'a language this place has never heard'. Read as a world fact that oversteps ELDARA_REFERENCE.md 2.12, which says not to assume mutual intelligibility OR a total barrier, and to resolve it on-screen the first time Chad tries to communicate with someone. He spoke to nobody, so nothing was established. Treat that phrase as Chad's own assumption, not canon: language remains UNRESOLVED and is still to be settled in-scene at the first real attempt."
+  ]
 }

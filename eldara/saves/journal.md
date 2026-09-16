@@ -32,3 +32,13 @@ Self-critique: ran clean (self_critique.py passed)
 - status: ["Twisted right ankle -- swollen, bears weight but worsens with use; calf tight after the climb to the ruin"] -> ["Twisted right ankle -- swollen; eased by ten minutes elevated on a fallen stone, but still worsens with use", "No water since arrival; mouth dry. Nothing eaten or drunk in Eldara."]
 - turn: 1 -> 2
 
+
+### Turn 2 — 2026-09-16 18:08 UTC
+
+_Turn 2 correction: 'a language this place has never heard' logged as Chad's assumption, not canon; language stays unresolved per 2.12_
+
+Self-critique: skipped (--skip-critique passed explicitly)
+
+- commit_token: "2-6f31e2" -> "2-8674dd"
+- continuity_notes: null -> ["Turn 2: the narration called Chad's muttered word 'a language this place has never heard'. Read as a world fact that oversteps ELDARA_REFERENCE.md 2.12, which says not to assume mutual intelligibility OR a total barrier, and to resolve it on-screen the first time Chad tries to communicate with someone. He spoke to nobody, so nothing was established. Treat that phrase as Chad's own assumption, not canon: language remains UNRESOLVED and is still to be settled in-scene at the first real attempt."]
+
