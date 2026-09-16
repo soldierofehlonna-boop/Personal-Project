@@ -52,6 +52,13 @@ TOP_LEVEL_TYPES = {
     "schema_version": int,
     "turn": int,
     "in_world_date": dict,
+    # state_schema.json has carried `language` as an object property, but
+    # this table did not, so every save that set it drew an "unrecognized
+    # top-level field" warning from the manual checks while passing schema
+    # validation cleanly -- two validators disagreeing about the same
+    # field. earn_clean_slate.py sets it on turn 2, so the project's own
+    # coverage fixture produced that warning on every run.
+    "language": dict,
     "gear": list,
     "currency": dict,
     "status": list,

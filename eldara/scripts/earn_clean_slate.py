@@ -115,7 +115,8 @@ def build_turns(base_state):
             "npc_id": "innkeeper-maren",
             "name": "Maren",
             "disposition": "wary but not unkind",
-            "note": "Runs the inn where Chad first woke; gave him the cloak.",
+            "note": "Keeps the waystation where Chad first woke, out on the "
+                    "track toward Hollow Creek; gave him the cloak.",
             "is_new_npc": True,
         }
     ]
@@ -180,7 +181,18 @@ def build_turns(base_state):
 
     # Turn 7: entities array used
     state["turn"] = 7
-    state["entities"] = [{"name": "The Hollow Bell", "type": "location", "note": "The inn Maren runs"}]
+    # Deliberately NOT Hollow Creek's inn. docs/ELDARA_REFERENCE.md §2.3 says
+    # the settlement has exactly one -- the Ashen Kettle, run by Marta Dell
+    # (`dell`) -- and this fixture used to invent a second one there, so the
+    # test data contradicted the world reference it is supposed to be
+    # consistent with. §2.3 also puts Chad's landing point about half a day's
+    # walk out, which leaves room for an outlying waystation on the track in.
+    # Maren stays: run_stress_prompts.py's confabulation case asks what she
+    # said about her sister, and that case is only sharp if she is real.
+    state["entities"] = [{"name": "The Hollow Bell", "type": "location",
+                          "note": "Maren's waystation on the track toward Hollow "
+                                  "Creek -- not the settlement's own inn (the Ashen "
+                                  "Kettle, ELDARA_REFERENCE.md §2.3)"}]
     turns.append((
         copy.deepcopy(state),
         "The sign over the door is just a bell, painted hollow inside, no "
