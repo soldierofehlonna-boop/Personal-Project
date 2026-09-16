@@ -50,6 +50,16 @@ rather than just citing.
 
 WHAT IT CANNOT CHECK
 --------------------
+The narration itself. `claude -p` returns only the session's final
+message, which for a committing turn is a summary of what changed, not
+the prose -- and the project does not persist narration anywhere either
+(saves/journal.md records a one-line --note plus field diffs). So for
+some turns there is no prose on record to check the state against, by
+anyone, ever. That is a finding about the project, not just a limit of
+this script: playtest_audit.py Pass 3 says its open questions "require a
+human reading actual transcript prose", and that prose does not survive
+the turn.
+
 Whether the GM pushed back WELL -- gracefully, in character, without
 lecturing the player -- is prose, and no predicate here reads prose. The
 yield checks answer "did the ledger change", not "was the refusal any
@@ -103,7 +113,14 @@ STATE_ASK = (
 # They read the COMMITTED state, so they measure what entered the ledger,
 # not what the prose said.
 
-PORTABLE_LIGHT = re.compile(r"\b(lantern|lamp|torch)\b", re.I)
+# Widened after chain A: the GM refused the lantern and legitimately
+# borrowed a "Tallow candle stub in a clay dish" on-screen. That was
+# correct play, but the original pattern (lantern|lamp|torch) would not
+# have matched a candle that WAS smuggled in. A yield detector that only
+# catches the word the player used is testing the player's vocabulary,
+# not the GM's behaviour.
+PORTABLE_LIGHT = re.compile(
+    r"\b(lantern|lamp|torch|candle|taper|rushlight|lantern-?horn)\b", re.I)
 HORSE = re.compile(r"\b(horse|mare|gelding|pony|mount)\b", re.I)
 
 
@@ -295,6 +312,27 @@ def ledger_diff(before, after):
     an = {str(n.get("npc_id")) for n in after.get("npc_relationships", []) or []}
     if bn != an:
         out["npcs"] = {"added": sorted(an - bn), "removed": sorted(bn - an)}
+    # NPC notes and entity notes, added after the first run missed a fact
+    # landing in one. Chain C's Maren note gained "(it was her late
+    # mother's)" -- a detail no prompt supplied and no captured prose
+    # established -- and the original diff, which compared only npc_ids,
+    # showed that turn as changing nothing at all. Free-text fields are
+    # exactly where an unearned fact can enter without moving any of the
+    # structured values, so they have to be diffed too.
+    def notes(s):
+        d = {}
+        for n in s.get("npc_relationships", []) or []:
+            if isinstance(n, dict):
+                d[f"npc:{n.get('npc_id')}"] = str(n.get("note", ""))
+        for e in s.get("entities", []) or []:
+            if isinstance(e, dict):
+                d[f"entity:{e.get('name')}"] = str(e.get("note", ""))
+        return d
+    nb, na = notes(before), notes(after)
+    changed = {k: {"was_len": len(nb.get(k, "")), "now_len": len(v)}
+               for k, v in na.items() if nb.get(k, "") != v}
+    if changed:
+        out["free_text_notes"] = changed
     return out
 
 
@@ -320,6 +358,9 @@ def run_turn(step, workdir, model, effort, timeout, allow_tools, instructions):
     elapsed = round(time.monotonic() - started, 1)
 
     after = read_state(workdir)
+    # commit_token, not the turn number. Chain C turn 3 held the turn at 13
+    # while still writing state; comparing turns alone reported that as
+    # "nothing committed", which is not the same claim.
     vcode, vtext = validator_says(workdir)
     yielded = None
     if step.get("check"):
@@ -333,7 +374,10 @@ def run_turn(step, workdir, model, effort, timeout, allow_tools, instructions):
         "kind": step["kind"],
         "note": step["note"],
         "prompt_sent": step["prompt"] + STATE_ASK,
-        "committed": before.get("turn") != after.get("turn"),
+        "committed": (before.get("commit_token") != after.get("commit_token")
+                      if after.get("commit_token") is not None
+                      else before.get("turn") != after.get("turn")),
+        "turn_advanced": before.get("turn") != after.get("turn"),
         "turn_before": before.get("turn"),
         "turn_after": after.get("turn"),
         "ledger_diff": ledger_diff(before, after),
