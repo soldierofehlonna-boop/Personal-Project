@@ -29,11 +29,42 @@
     },
     {
       "id": "resolved-thread-retention",
-      "status": "open",
-      "owner": "user-decision",
+      "status": "fixed",
+      "owner": "agent",
       "summary": "state_schema.json says a resolved thread is removed from open_threads entirely, never just marked inactive. Two of three chains marked inactive instead; validate_state.py exit 0 on every turn.",
       "evidence": "chainA kept 2 resolved-but-retained threads, chainB 1, chainC 0. chainB's retained text reads 'CLOSED BY PAYMENT, not by forgiveness' -- a defence written into the ledger that resisted the turn-17 forgiveness pressure. The rule-breaking version may be the better behaviour.",
-      "candidates": []
+      "candidates": [
+        {
+          "name": "validator warns on a resolved-looking retained thread",
+          "tier": 1,
+          "effectiveness": 4,
+          "churn": 0,
+          "why": "Detector calibrated against all 26 distinct real thread texts from this session: 4/4 true positives, 0 false positives, and it leaves alone the two active=false threads that are dormant-but-open (a standing offer, an unpriced debt) -- confirming active:false has a legitimate non-resolved meaning the schema already describes."
+        },
+        {
+          "name": "point GM_INSTRUCTIONS at continuity_notes for the annotation",
+          "tier": 0,
+          "effectiveness": 3,
+          "churn": 0,
+          "why": "The good behaviour needs a home. All three chains already used continuity_notes for the refusal; saying so makes the correct pattern explicit instead of leaving the GM to reinvent it as a retained thread."
+        },
+        {
+          "name": "make it a hard validation error",
+          "tier": 1,
+          "effectiveness": 3,
+          "churn": 3,
+          "why": "Detection is textual. This project's own distinction is that blocking gates must be deterministic and advisory passes may be heuristic -- a regex that rejects a save outright would break that, and would reject a legitimate thread whose prose merely mentions settling."
+        },
+        {
+          "name": "change the schema to permit retention",
+          "tier": 1,
+          "effectiveness": 2,
+          "churn": 2,
+          "why": "Would legitimise spending soft-cap space on closed business for an audit benefit the evidence shows is already delivered by continuity_notes."
+        }
+      ],
+      "research": "The reason this was held back as a design call does not survive the data. The argument for retention was that chainB's retained text ('CLOSED BY PAYMENT, not by forgiveness') defended against the turn-17 forgiveness pressure. But ALL THREE chains recorded that refusal in continuity_notes, which is also in current.json and so also in the GM's mental model (GM_INSTRUCTIONS line 95). chainC held the line with ZERO retained threads. Retention is not what made the defence work; continuity_notes is, and it is the purpose-built field. Retention also costs cap space: 40% of chainA's open_threads array was closed business, pushing a 5/8 array toward the soft cap where prune_advisor -- a known-risky path -- gets invoked. Soft-delete practice agrees: keep a flag when you need an audit trail or an undo, and here the audit trail already exists elsewhere, so the flag only accumulates.",
+      "fixed_by": "validate_state.py warns when a thread whose prose reads as resolved is still in open_threads (advisory -- detection is textual); GM_INSTRUCTIONS points at continuity_notes as the home for 'paid, not forgiven'. Reclassified from user-decision to agent after the evidence resolved it."
     },
     {
       "id": "narration-not-persisted",

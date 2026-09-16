@@ -212,6 +212,18 @@ ever an approximation of a date, and it drifts as turns accumulate:
 ]
 ```
 
+When a thread's business actually closes, **remove it** from
+`open_threads` — that array is the open business, and `active: false`
+means open-but-not-time-pressured, not finished. If what matters is
+recording *how* it closed — that a debt was paid rather than forgiven,
+so a later turn cannot quietly recast it — that belongs in
+`continuity_notes`, which the next turn reads just as surely. Blind
+testing settled this: three runs were pressed to accept that a paid debt
+had been forgiven, all three refused, all three recorded the refusal as
+a continuity note, and the one that had removed its resolved threads
+defended exactly as well as the two that kept them. Keeping them only
+spent soft-cap space — 40% of one run's array was closed business.
+
 `amount` records what the obligation costs, when the scene named a sum.
 Record it only if the price was actually stated — an unpriced debt must
 stay unpriced rather than acquire an invented figure here. What it

@@ -462,6 +462,32 @@ def pass2_adversarial(tmp_dir):
                     staged_despite_missing == "",
                     f"staged: {staged_despite_missing!r}"))
 
+    # A thread whose prose says it is finished must not sit in
+    # open_threads spending soft-cap space. Both halves are pinned: the
+    # resolved-looking retained thread warns, and a thread that is merely
+    # dormant (active=false, nothing in its text saying it closed) stays
+    # quiet -- that second case is what `active: false` legitimately
+    # means, and a detector that warned on it would be untrustworthy.
+    keep = json.loads(json.dumps(base))
+    keep["open_threads"] = [{"text": "Maren's room fee -- settled in full on turn 12",
+                             "added_turn": 1, "active": False}]
+    keep_path = tmp_dir / "resolved_retained.json"
+    keep_path.write_text(json.dumps(keep), encoding="utf-8")
+    _, out_k = run_script(["scripts/validate_state.py", str(keep_path)])
+    retained_caught = "still in open_threads" in out_k
+
+    dormant = json.loads(json.dumps(base))
+    dormant["open_threads"] = [{"text": "Maren's standing offer: a wool blanket for 4 copper",
+                                "added_turn": 1, "active": False}]
+    dormant_path = tmp_dir / "dormant_open.json"
+    dormant_path.write_text(json.dumps(dormant), encoding="utf-8")
+    _, out_d = run_script(["scripts/validate_state.py", str(dormant_path)])
+    dormant_quiet = "still in open_threads" not in out_d
+
+    results.append(("validate_state.py flags a resolved thread left in "
+                    "open_threads, and leaves a merely dormant one alone",
+                    retained_caught and dormant_quiet, out_k + out_d))
+
     # prune_advisor.py must run without crashing and must print the
     #    "confirm or override" caveat -- we do NOT assert its ranking
     #    quality here, since it's a known-naive heuristic; this only

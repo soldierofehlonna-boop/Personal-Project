@@ -20,6 +20,7 @@ Usage:
     python3 scripts/validate_state.py --quick     # fast gear-only glance
 """
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -193,6 +194,23 @@ def find_registered_npc_id(registry, npc_id):
 
 DENOMINATIONS = ("copper", "silver", "gold", "platinum")
 
+# Prose that says a thread's business is FINISHED. state_schema.json:
+# "a resolved thread is removed from this array entirely, never just
+# marked inactive." Detection is textual, so this drives a warning and
+# never a rejection -- this project's own line is that blocking gates are
+# deterministic and heuristics stay advisory.
+#
+# Calibrated against all 26 distinct thread texts produced by this
+# session's blind runs: 4 true positives, 0 false positives. The
+# phrasings it must NOT fire on are as instructive as the ones it must:
+# "the healer's fee she paid on his ankle" is a live debt (hence
+# `paid off|in full|it|her`, never bare "paid"), and "Maren's standing
+# offer ... for 4 copper" is open-but-not-urgent with active=false, which
+# is what that flag legitimately means.
+RESOLVED_PROSE = re.compile(
+    r"\b(settled|closed by|paid (?:off|in full|it|her)|resolved|discharged|"
+    r"no longer owed|fully paid)\b", re.I)
+
 # Numbers written out in prose. Kept small and common on purpose: the
 # point is to catch a price the narration plainly stated, not to parse
 # arbitrary English.
@@ -223,13 +241,12 @@ def prices_in_text(text):
     it does not report, because this drives a warning a human has to
     triage and a noisy version would be turned off.
     """
-    import re as _re
     found = {}
     if not isinstance(text, str):
         return found
-    for m in _re.finditer(
+    for m in re.finditer(
             r"\b(\d{1,4}|" + "|".join(WORD_NUMBERS) + r")\s+(" +
-            "|".join(DENOMINATIONS) + r")\b", text, _re.I):
+            "|".join(DENOMINATIONS) + r")\b", text, re.I):
         raw, denom = m.group(1).lower(), m.group(2).lower()
         n = WORD_NUMBERS.get(raw)
         if n is None:
@@ -451,6 +468,31 @@ def manual_checks(state, registry_path=None, locations_path=None):
             errors.append(
                 f"open_thread '{thread.get('text', '')[:40]}...' has deadline_turn <= added_turn"
             )
+        # A thread whose prose says it is finished should not still be in
+        # open_threads. The array is the OPEN business; `active: false`
+        # means open-but-not-time-pressured, not resolved.
+        #
+        # Retention looked defensible: one blind chain kept a resolved
+        # thread reading "CLOSED BY PAYMENT, not by forgiveness" and did
+        # resist a later attempt to rewrite that debt as forgiven. But
+        # all three chains recorded the same refusal in continuity_notes,
+        # which is equally part of the state the next turn reads, and the
+        # chain that retained NOTHING defended just as well. The audit
+        # trail is delivered by continuity_notes either way; retention
+        # only spends soft-cap space -- 40% of one chain's array was
+        # closed business -- and pushes toward the cap where pruning,
+        # itself a known-risky path, gets invoked.
+        if thread.get("active") is False and RESOLVED_PROSE.search(
+                str(thread.get("text") or "")):
+            warnings.append(
+                f"open_thread '{thread.get('text', '')[:40]}...' reads as already "
+                f"resolved but is still in open_threads. A resolved thread is "
+                f"removed entirely, never just marked inactive -- it is spending "
+                f"soft-cap space on closed business. If the point is to record "
+                f"HOW it closed (paid, not forgiven), that belongs in "
+                f"continuity_notes, which the next turn reads too."
+            )
+
         # An obligation's amount, where the fiction named one.
         amount = thread.get("amount")
         if amount is not None:
