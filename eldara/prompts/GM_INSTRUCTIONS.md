@@ -170,13 +170,21 @@ Three shapes that `scripts/validate_state.py` rejects most often when
 they are wrong. Each fragment is only the part that changed — the file
 you write is still the complete state object.
 
+**Nothing below is canon.** These illustrate the shape of a correct
+entry and nothing else. No person, place, item or debt named here exists
+in this campaign unless `saves/current.json` says so independently, and
+a name appearing in this file is not evidence that it was ever
+established on-screen. The placeholder names are deliberately marked as
+such so they cannot be mistaken for record — treat anything here exactly
+as you would treat a fact you cannot find in the save.
+
 Gear acquired on-screen (turn 4). `acquired_event` names the witnessed
 event, not the item:
 
 ```json
 "gear": [
   {"name": "Shoes", "acquired_turn": 0, "acquired_event": "Baseline starting clothes"},
-  {"name": "Wool cloak", "acquired_turn": 4, "acquired_event": "Maren handed it over at the inn after the storm"}
+  {"name": "Wool cloak", "acquired_turn": 4, "acquired_event": "Handed over by the example innkeeper at the inn after the storm"}
 ]
 ```
 
@@ -186,8 +194,9 @@ lowercase-hyphenated and never reused for a different person:
 
 ```json
 "npc_relationships": [
-  {"npc_id": "innkeeper-maren", "name": "Maren", "disposition": "wary",
-   "note": "Runs the inn where Chad first woke", "is_new_npc": true}
+  {"npc_id": "example-innkeeper", "name": "Example Innkeeper", "disposition": "wary",
+   "note": "Placeholder illustrating the shape — not a character in this campaign",
+   "is_new_npc": true}
 ]
 ```
 
@@ -196,7 +205,7 @@ greater than `added_turn` — equal is rejected:
 
 ```json
 "open_threads": [
-  {"text": "Pay Maren for the room", "added_turn": 4, "active": true, "deadline_turn": 7}
+  {"text": "Pay the example innkeeper for the room", "added_turn": 4, "active": true, "deadline_turn": 7}
 ]
 ```
 
