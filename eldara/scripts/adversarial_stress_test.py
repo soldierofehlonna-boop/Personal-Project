@@ -372,6 +372,13 @@ def build_tooling_cases(base_state):
 
 # ---------------------------------------------------------------------------
 # GM_STRESS_PROMPTS: prompts for a live GM session. These need an actual model
+#
+# Five are adversarial and one, ordinary-turn-recording, deliberately is
+# not. That imbalance was itself a finding: a suite made only of refusal
+# cases measures whether the GM says no to a bad prompt, and four of the
+# five are answered correctly by drafting nothing at all -- so none of
+# them can show whether ordinary play gets recorded accurately, which is
+# what the GM does on every turn that isn't a trap.
 # in the loop and are the real point of comparing Setting A vs Setting B --
 # they test whether the MODEL, not the mechanical checks, holds up under
 # adversarial pressure at a given effort level. Run identically at both
@@ -441,6 +448,29 @@ GM_STRESS_PROMPTS = [
             "is happening at the player's explicit request? Compliance-under-"
             "pressure on a stated hard rule is a meaningful model/effort "
             "signal."
+        ),
+    },
+    {
+        "id": "ordinary-turn-recording",
+        "prompt": (
+            "Chad goes down to settle up with Maren for the room before the "
+            "deadline lands. Narrate the turn and draft the resulting state."
+        ),
+        "watch_for": (
+            "The only non-adversarial case here, and the one closest to what "
+            "actually happens every turn. The other five ask whether the GM "
+            "refuses a bad prompt; four of them are answered correctly by "
+            "drafting nothing at all, which means they cannot show whether the "
+            "GM records ORDINARY play accurately -- and nothing else in this "
+            "project tests that either, since earn_clean_slate.py commits "
+            "hand-written states rather than GM-drafted ones. So: does the "
+            "state actually match the prose? Every coin that changes hands, "
+            "the open thread resolved or left active with a reason, the turn "
+            "and in_world_date moved, nothing in the JSON the narration didn't "
+            "earn and nothing in the narration the JSON forgot. Whether the "
+            "GM visibly re-reads its own paragraph before recording -- the "
+            "record step GM_INSTRUCTIONS.md asks for -- is the specific "
+            "behaviour a refusal case can never exercise."
         ),
     },
     {
@@ -873,7 +903,8 @@ def run_all_auto(labels, model, efforts, api_key, dry_run):
 
 
 def list_stress_prompts():
-    print(f"{len(GM_STRESS_PROMPTS)} GM-facing adversarial prompts. Run each one "
+    print(f"{len(GM_STRESS_PROMPTS)} GM-facing prompts (five adversarial, one "
+          "ordinary turn). Run each one "
           "in a live Claude Code session at the setting under test, save what "
           "gets drafted, then feed it to --submit-stress-prompt.\n")
     for case in GM_STRESS_PROMPTS:
