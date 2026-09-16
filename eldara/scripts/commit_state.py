@@ -71,6 +71,7 @@ SAVES_DIR = ROOT / "saves"
 CURRENT_PATH = SAVES_DIR / "current.json"
 BACKUP_DIR = SAVES_DIR / "backups"
 NPC_REGISTRY_PATH = SAVES_DIR / "npc_registry.json"
+NARRATION_DIR = SAVES_DIR / "narration"
 LOCATIONS_PATH = ROOT / "saves" / "locations.json"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -391,6 +392,65 @@ def stamp_npc_recency(state, narration_text):
             npc["last_referenced_turn"] = state.get("turn")
 
 
+def persist_narration(state, critique_text):
+    """Write this turn's narration to saves/narration/, beside the state.
+
+    The prose was already here. commit_state.py receives it through
+    --critique-file / --critique-text / --critique-stdin, writes it to a
+    temp file for self_critique.py and lore_consistency_check.py, and
+    then deletes it in a finally block. Every turn, the project wrote the
+    narration to disk, checked it, and threw it away.
+
+    That made one of the project's own stated fallbacks impossible.
+    playtest_audit.py Pass 3 lists what it cannot check -- whether Prose
+    Craft is still being followed, whether failure is still being allowed
+    -- and defers those to "a human reading actual transcript prose".
+    That prose did not survive the turn, so the fallback could never be
+    exercised by anyone. The same gap makes the state unauditable after
+    the fact in the sense that matters here: the state is the claim and
+    the narration is the evidence for it, and with the evidence gone
+    "does the record match what was narrated" cannot be asked, only
+    trusted.
+
+    Stored as one file per turn rather than appended into journal.md.
+    Pass 1's coverage checks grep that file, and while its JSON-shaped
+    regexes (status/magic/copper) do not match ordinary prose, the
+    deadline_turn check is a bare substring test and the npc_id coverage
+    heuristic counts literal occurrences -- both inflatable by narration
+    that happens to discuss mechanics. Separate files cannot corrupt a
+    log that other checks parse.
+
+    The header carries the commit_token, which already chains each turn
+    to its predecessor. That gives the same property the provenance
+    literature recommends for audit bundles: a narration file can be
+    matched to the exact state it justified, and one that has drifted
+    from its turn is visible rather than silently authoritative.
+
+    Failure here is deliberately non-fatal. A turn that validated and
+    passed its gates must not be lost because an archive write failed;
+    the warning says so rather than the commit vanishing.
+    """
+    if not critique_text or not critique_text.strip():
+        return None
+    try:
+        NARRATION_DIR.mkdir(parents=True, exist_ok=True)
+        turn = state.get("turn")
+        token = state.get("commit_token", "")
+        path = NARRATION_DIR / f"turn-{turn:04d}.md" if isinstance(turn, int) \
+            else NARRATION_DIR / "turn-unknown.md"
+        header = (f"# Turn {turn}\n\n"
+                  f"- commit_token: `{token}`\n"
+                  f"- in_world_date: {state.get('in_world_date')}\n\n"
+                  f"---\n\n")
+        path.write_text(header + critique_text.rstrip() + "\n", encoding="utf-8")
+        return path
+    except OSError as e:
+        print(f"WARNING: could not archive this turn's narration ({e}). "
+              f"The commit itself is unaffected, but the prose for this turn "
+              f"is not on record.")
+        return None
+
+
 def git_commit_if_repo():
     result = subprocess.run(
         ["git", "rev-parse", "--is-inside-work-tree"],
@@ -400,6 +460,15 @@ def git_commit_if_repo():
         return False, None
 
     files = ["saves/current.json", "saves/npc_registry.json", "saves/journal.md"]
+    # Only pass a path git can actually resolve. `git add a b missing` is
+    # fatal and stages NOTHING -- not even the paths that do exist -- so
+    # naming saves/narration unconditionally would, on any campaign that
+    # has not archived a narration yet, stage nothing, commit nothing, and
+    # leave saves/current.json ahead of git history with only a "nothing to
+    # commit" to show for it. That is precisely the silent divergence the
+    # error handling below exists to surface, reintroduced upstream of it.
+    if NARRATION_DIR.exists():
+        files.append("saves/narration")
     subprocess.run(["git", "add", *files], cwd=ROOT, capture_output=True, text=True)
     commit = subprocess.run(
         ["git", "commit", "-m", "Update campaign state"],
@@ -661,8 +730,11 @@ def main():
         if arrived:
             note = f"{note} (arrived at {new_state.get('current_location')}; travel cleared automatically)" if note else \
                 f"Arrived at {new_state.get('current_location')}; travel cleared automatically"
+        narration_path = persist_narration(new_state, critique_text)
         append_journal(old_state, new_state, note=note, critique_status=critique_status)
         committed, git_error = git_commit_if_repo()
+        if narration_path:
+            print(f"(narration archived: {narration_path.relative_to(ROOT)})")
 
         print("Commit complete.")
         if committed:

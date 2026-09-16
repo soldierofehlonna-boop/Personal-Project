@@ -404,6 +404,64 @@ def pass2_adversarial(tmp_dir):
                     "recorded amount disagree", disagree_caught and rate_quiet,
                     out_m + out_r))
 
+    # A committed turn must leave its narration on record. The prose is
+    # the evidence the state is a claim about; before this, commit_state.py
+    # received it, checked it, and deleted it in a finally block, which made
+    # Pass 3's own "a human reading actual transcript prose" fallback
+    # impossible to carry out. Checked by importing the writer directly --
+    # driving a full commit here would need a git repo and a clean gate run,
+    # and this suite is meant to stay hermetic.
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    narration_ok = False
+    narration_out = ""
+    try:
+        import importlib
+        cs = importlib.import_module("commit_state")
+        original = cs.NARRATION_DIR
+        cs.NARRATION_DIR = tmp_dir / "narration_probe"
+        try:
+            st = {"turn": 7, "commit_token": "7-abc123",
+                  "in_world_date": {"day": 3, "month": "Seedmonth", "year": 1}}
+            written = cs.persist_narration(st, "He counts the coin twice and says nothing.")
+            blank = cs.persist_narration(st, "   ")
+            if written and written.exists():
+                body = written.read_text(encoding="utf-8")
+                narration_ok = ("7-abc123" in body
+                                and "counts the coin twice" in body
+                                and written.name == "turn-0007.md"
+                                and blank is None)
+                narration_out = body[:200]
+        finally:
+            cs.NARRATION_DIR = original
+    except Exception as e:                       # noqa: BLE001 - report, don't crash the suite
+        narration_out = f"raised {e!r}"
+    results.append(("commit_state.py archives a turn's narration, stamped with "
+                    "its commit_token", narration_ok, narration_out))
+
+    # git add must never be handed a path git cannot resolve. `git add a b
+    # missing` is fatal and stages NOTHING -- not even the paths that exist
+    # -- so naming saves/narration unconditionally would, on a campaign that
+    # has not archived one yet, commit nothing while saves/current.json
+    # advanced on disk. Verified against real git rather than by reading the
+    # source, because the failure is in git's behaviour, not the project's.
+    gitprobe = tmp_dir / "gitprobe"
+    (gitprobe / "saves").mkdir(parents=True, exist_ok=True)
+    (gitprobe / "saves" / "current.json").write_text("{}", encoding="utf-8")
+    def git(*a):
+        return subprocess.run(["git", *a], cwd=gitprobe, capture_output=True, text=True)
+    git("init", "-q", ".")
+    git("config", "user.email", "probe@local")
+    git("config", "user.name", "probe")
+    git("add", "saves/current.json")
+    git("commit", "-qm", "base")
+    (gitprobe / "saves" / "current.json").write_text('{"turn": 1}', encoding="utf-8")
+    git("add", "saves/current.json", "saves/narration")
+    staged_despite_missing = git("diff", "--cached", "--name-only").stdout.strip()
+    results.append(("git add stages nothing when handed a missing path (the "
+                    "reason saves/narration is only added when it exists)",
+                    staged_despite_missing == "",
+                    f"staged: {staged_despite_missing!r}"))
+
     # prune_advisor.py must run without crashing and must print the
     #    "confirm or override" caveat -- we do NOT assert its ranking
     #    quality here, since it's a known-naive heuristic; this only
@@ -665,6 +723,21 @@ def pass3_drift_proxies():
     print("      should have -- self_critique.py's own detection is a narrow heuristic (see")
     print("      its docstring); a clean run here means the heuristic found nothing, not")
     print("      that the turn was good.")
+    # Until narration was archived this deferral pointed at nothing: the
+    # prose did not survive the turn, so the fallback it names could never
+    # be exercised by anyone. Say where the prose is, or the instruction
+    # is the same dead end it was before.
+    narr = SAVES_DIR / "narration"
+    files = sorted(narr.glob("turn-*.md")) if narr.exists() else []
+    if files:
+        print(f"  The prose IS on record: {len(files)} turn(s) in "
+              f"saves/narration/ ({files[0].name}..{files[-1].name}), each stamped")
+        print("  with the commit_token of the state it justified. Read those against")
+        print("  saves/current.json to answer the questions above.")
+    else:
+        print("  NOTE: saves/narration/ is empty, so the prose for these turns is not")
+        print("  on record and the review below cannot actually be carried out. Turns")
+        print("  committed before narration archiving existed are gone for good.")
     print("  These require a human reading actual transcript prose. No script here")
     print("  claims otherwise.")
     print()

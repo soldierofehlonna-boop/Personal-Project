@@ -37,11 +37,49 @@
     },
     {
       "id": "narration-not-persisted",
-      "status": "open",
+      "status": "fixed",
       "owner": "agent",
       "summary": "No narration prose survives a turn. saves/journal.md holds a one-line --note plus field diffs; claude -p returns only the final message.",
-      "evidence": "playtest_audit.py Pass 3 defers its open questions to 'a human reading actual transcript prose'. That artifact does not exist, so the stated human-review fallback is impossible as built.",
-      "candidates": []
+      "evidence": "playtest_audit.py Pass 3 defers its open questions to 'a human reading actual transcript prose'. That artifact does not exist, so the stated human-review fallback is impossible as built. commit_state.py ALREADY receives the full narration (--critique-file/--critique-text/--critique-stdin), writes it to a temp file for self_critique.py and lore_consistency_check.py, then deletes it in a finally block. The prose is in hand at commit time and thrown away.",
+      "candidates": [
+        {
+          "name": "persist narration per turn, committed with the state",
+          "tier": 1,
+          "effectiveness": 5,
+          "churn": 1,
+          "why": "The text is already in hand and commit_state.py already git-commits a file set, so this is a write and an add. Directly restores the artifact Pass 3 defers to. ~7KB/turn measured from chain responses -- 17 turns is ~100KB."
+        },
+        {
+          "name": "store only a hash of the narration",
+          "tier": 1,
+          "effectiveness": 2,
+          "churn": 1,
+          "why": "Proves a state was committed against SOME prose and detects later tampering, but a human still cannot read it, so Pass 3's fallback stays impossible. Disk was never the constraint."
+        },
+        {
+          "name": "append narration into journal.md",
+          "tier": 1,
+          "effectiveness": 3,
+          "churn": 2,
+          "why": "No new files, but Pass 1 greps the journal. Verified: the JSON-shaped regexes (status/magic/copper) do not match ordinary prose, but 'deadline_turn' in journal is a bare substring test and the npc_id coverage heuristic counts literal occurrences -- both inflatable by narration that discusses mechanics."
+        },
+        {
+          "name": "capture narration in run_drift_chain only",
+          "tier": 4,
+          "effectiveness": 2,
+          "churn": 0,
+          "why": "Fixes the harness, not the project: real play through session.py would still lose its prose. Also tier 4, so blocked by budget."
+        },
+        {
+          "name": "document the limitation, change nothing",
+          "tier": 0,
+          "effectiveness": 1,
+          "churn": 0,
+          "why": "The 'instructions nobody follows' failure, already corrected once this session."
+        }
+      ],
+      "research": "Survey of evidence tracing / execution provenance in LLM agents (arXiv 2606.04990): fine-grained provenance supports verification, debugging, recovery and audit -- coarse-grained 'may fail to identify which evidence supported a claim'. In Eldara the state is the claim and the narration is the evidence, so with the prose gone no claim can be supported. Practice favours typed/structured records over free-form transcripts, and hash-chaining each bundle to its predecessor (CloudTrail-style); Eldara already chains commit_token turn to turn.",
+      "fixed_by": "commit_state.py persist_narration() writes saves/narration/turn-NNNN.md, stamped with the commit_token of the state it justified, committed with the state. Pass 3 now points at it. Turns committed before this are gone."
     },
     {
       "id": "unpriced-obligation",
