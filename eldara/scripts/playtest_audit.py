@@ -618,6 +618,38 @@ def pass2_adversarial(tmp_dir):
                     "instead of dying, and still checks the good ones",
                     lore_ok, lore_out))
 
+    # session_cost_guide.py's budget check must FAIL CLOSED. It used to
+    # compute `blocked = worst is not None and worst != "allowed"`, so a
+    # missing or unreadable rate-limit history meant NOT blocked, and an
+    # 18-session drift chain came back RECOMMENDED with no warning. No
+    # budget recorded is the normal state at the start of a session, not an
+    # edge case, so that is the common path, not a corner.
+    guide_ok = False
+    guide_out = ""
+    try:
+        import importlib
+        scg = importlib.import_module("session_cost_guide")
+        orig_hist = scg.HISTORY_FILE
+        scg.HISTORY_FILE = tmp_dir / "no_such_history.json"
+        try:
+            rows, worst = scg.budget()
+            unknown_blocks = (worst == "unknown")
+        finally:
+            scg.HISTORY_FILE = orig_hist
+        # and the measured draw must separate the two nested tiers
+        draw = scg.measured_draw((20, 5), (18, 3))      # 4.0/run vs 6.0/run
+        separated = draw[3] < draw[4] and draw[0] == 0
+        # a tier with nothing measured must not read as free
+        nothing = scg.measured_draw((0, 0), (0, 0))
+        not_free = nothing[3] > 0 and nothing[4] > 0
+        guide_ok = unknown_blocks and separated and not_free
+        guide_out = f"worst={worst!r} draw={draw} unmeasured={nothing}"
+    except Exception as e:                       # noqa: BLE001
+        guide_out = f"raised {e!r}"
+    results.append(("session_cost_guide.py treats an unknown budget as blocking "
+                    "and prices nested tiers from measured runs",
+                    guide_ok, guide_out))
+
     # prune_advisor.py must run without crashing and must print the
     #    "confirm or override" caveat -- we do NOT assert its ranking
     #    quality here, since it's a known-naive heuristic; this only

@@ -27,6 +27,25 @@ for a four-hour one. This reads the per-window history the guard records
 and prints every window it has ever seen, each labelled with the age of
 its observation, so a stale entry cannot pass as current.
 
+HOW CANDIDATES ARE SCORED, AND A DELIBERATE CHANGE
+---------------------------------------------------
+A free tier scores its effectiveness outright. A nested tier scores
+effectiveness divided by its MEASURED sessions per run, so an 18-session
+drift chain must be roughly four times as useful as a 4-session stress run
+to outrank it.
+
+The divisor used to be a flat `draw * 10` with draw hardcoded to 1 for
+both nested tiers, which had two effects worth naming. It made tiers 3 and
+4 rank as equally expensive when the artifacts on disk say otherwise, and
+it made ANY free option beat ANY nested one -- an effectiveness-1
+re-reading outranked an effectiveness-5 run that would actually settle the
+question. That is not "the cheapest option that can still answer the
+question"; it is the cheapest option regardless of whether it answers
+anything. Now a weak free option can lose to a strong nested one WHEN THE
+BUDGET ALLOWS IT. When the budget does not -- the usual case -- nested
+tiers are excluded outright and the free option wins by default, which is
+the behaviour that actually matters day to day.
+
 WHAT IT REFUSES TO ESTIMATE
 ---------------------------
 Tokens, dollars, and any "percent remaining". Nothing on disk supports
@@ -54,9 +73,18 @@ REPO = ROOT.parent
 HISTORY_FILE = REPO / ".claude" / "rate_limit_history.json"
 ISSUES_FILE = ROOT / "docs" / "open_issues.json"
 
-# Draw weight per tier. Not a token count -- a count of nested `claude -p`
-# sessions, which is the quantity that actually moves the rate limit.
-TIER_DRAW = {0: 0, 1: 0, 2: 0, 3: 1, 4: 1}
+# Draw weight per tier. Not a token count -- nested `claude -p` sessions,
+# the quantity that actually moves the rate limit. Tiers 0-2 spawn none.
+#
+# Tiers 3 and 4 used to be hardcoded to 1 apiece, which threw away a
+# difference this script already measures: over the runs on disk, tier 3
+# averaged 3.8 sessions per run and tier 4 averaged 6.0, and a DEFAULT
+# drift chain is 18. Ranking them as equally expensive meant the costlier
+# option could win a tie it should have lost. measured_draw() replaces the
+# guess with the artifacts, and falls back to the old constants only when
+# there is nothing on disk to measure.
+FREE_TIER_DRAW = {0: 0, 1: 0, 2: 0}
+FALLBACK_DRAW = {3: 4.0, 4: 18.0}
 
 FREE_TIERS = [
     (0, "Re-analyse run artifacts already on disk",
@@ -66,6 +94,19 @@ FREE_TIERS = [
     (2, "Unit-test predicates against synthetic states",
      "no model involved at all"),
 ]
+
+
+def measured_draw(sp_secs_runs, dc_secs_runs):
+    """Sessions per run for the nested tiers, measured from disk.
+
+    Returns {tier: sessions_per_run}. A tier with no runs on disk keeps its
+    fallback, because "unmeasured" must not read as "free" -- that is the
+    same fail-open this file was already guilty of on the budget check.
+    """
+    draw = dict(FREE_TIER_DRAW)
+    for tier, (sessions, runs) in ((3, sp_secs_runs), (4, dc_secs_runs)):
+        draw[tier] = (sessions / runs) if runs else FALLBACK_DRAW[tier]
+    return draw
 
 
 def measure(pattern, session_key):
@@ -100,16 +141,25 @@ def budget():
     passed is reported as expired rather than as a live constraint --
     that is exactly the five_hour entry that misled once already.
     """
+    # "unknown" is returned rather than None, and callers treat it as
+    # blocking. An earlier version returned None here and rank_fixes()
+    # computed `blocked = worst is not None and worst != "allowed"`, so a
+    # missing or unreadable history file meant NOT blocked: with no budget
+    # information at all, an 18-session drift chain was RECOMMENDED outright
+    # with no warning. That is fail-open on the one control the whole cost
+    # discipline rests on, and no-budget-recorded is the NORMAL state at the
+    # start of a session, not an edge case. Fail-safe defaults: an
+    # unrecognized or missing input is invalid, not permissive.
     if not HISTORY_FILE.exists():
-        return [], None
+        return [], "unknown"
     try:
         hist = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return [], None
+        return [], "unknown"
 
     now = int(time.time())
     rank = {"allowed": 0, "allowed_warning": 1}
-    rows, worst, worst_n = [], None, -1
+    rows, worst, worst_n = [], "unknown", -1
     for window, rec in sorted(hist.items()):
         age = now - int(rec.get("recorded_at") or 0)
         resets = rec.get("resets_at")
@@ -128,7 +178,8 @@ def budget():
         n = rank.get(status, 2)
         if live and n > worst_n:
             worst, worst_n = status, n
-    return rows, worst
+    # Every observation stale or expired -> still unknown, not clear.
+    return rows, (worst if worst_n >= 0 else "unknown")
 
 
 def load_issues(path=None):
@@ -171,7 +222,7 @@ def inventory(issues):
     return open_
 
 
-def rank_fixes(path, rows, worst):
+def rank_fixes(path, rows, worst, tier_draw):
     """Rank candidate fixes by effectiveness against draw.
 
     Each candidate: {name, tier, effectiveness (1-5), why, notes}.
@@ -204,7 +255,7 @@ def rank_fixes(path, rows, worst):
             print("  candidates to docs/open_issues.json first.")
             return []
 
-    blocked = worst is not None and worst != "allowed"
+    blocked = worst != "allowed"   # unknown blocks, same as a warning
     print(f"\n{'':2}{'CANDIDATE':<34} {'TIER':>4} {'EFFECT':>7} {'DRAW':>6}  VERDICT")
     print("  " + "-" * 84)
 
@@ -212,12 +263,15 @@ def rank_fixes(path, rows, worst):
     for c in cands:
         tier = int(c.get("tier", 0))
         eff = int(c.get("effectiveness", 0))
-        draw = TIER_DRAW.get(tier, 1)
-        # Free tiers can't divide by zero; they are simply best-in-class
-        # for any effectiveness above nil.
-        score = eff if draw == 0 else eff / (draw * 10)
+        draw = tier_draw.get(tier, FALLBACK_DRAW.get(tier, 1.0))
+        # Free tiers cannot divide by zero and are simply best-in-class for
+        # any effectiveness above nil. Among nested tiers, effectiveness is
+        # divided by MEASURED sessions per run, so an 18-session chain must
+        # be roughly four times as effective as a 4-session stress run to
+        # outrank it -- which is the trade the old flat weight hid.
+        score = eff if draw == 0 else eff / draw
         permitted = not (blocked and tier >= 3)
-        scored.append((score, permitted, tier, eff, c))
+        scored.append((score, permitted, tier, eff, c, draw))
 
     # Ties are broken toward LOWER churn, and only ONE candidate is ever
     # marked. An earlier version marked every candidate matching the top
@@ -229,19 +283,25 @@ def rank_fixes(path, rows, worst):
                 reverse=True)
     top = scored[0] if scored and scored[0][1] else None
     for row in scored:
-        score, permitted, tier, eff, c = row
-        verdict = ("" if permitted else "BLOCKED by budget")
+        score, permitted, tier, eff, c, draw = row
+        verdict = ("" if permitted else
+                   ("BLOCKED: budget unknown" if worst == "unknown"
+                    else "BLOCKED by budget"))
         if top is not None and row is top:
             verdict = "<= RECOMMENDED"
-        draw_s = "none" if TIER_DRAW.get(tier, 1) == 0 else "nested"
+        draw_s = ("none" if draw == 0 else f"{draw:.0f}/run")
         print(f"  {c.get('name','?')[:34]:<34} {tier:>4} {eff:>6}/5 {draw_s:>6}  {verdict}")
         if c.get("why"):
             print(f"    why: {c['why']}")
     print("\n  EFFECT is judged, not measured -- it is the author's estimate of how")
     print("  much of the issue the fix actually removes. TIER and DRAW are measured.")
-    if blocked:
+    if worst == "unknown":
+        print("  Tier 3+ candidates are excluded: NO usable budget observation.")
+        print("  Record one before ranking an expensive run -- get_session ->")
+        print("  external_metadata.rate_limit_info, then tier34_guard.py --record.")
+    elif blocked:
         print(f"  Tier 3+ candidates are excluded: budget status is {worst!r}.")
-    return [c for _, p, _, _, c in scored if p]
+    return [c for _, p, _, _, c, _d in scored if p]
 
 
 def main():
@@ -260,10 +320,10 @@ def main():
         print(f"          {detail}")
     print()
 
-    sp_runs, _, sp_secs = measure(
+    sp_runs, sp_sessions, sp_secs = measure(
         "stress_transcript_*.json",
         lambda d: d.get("results", []) if isinstance(d, dict) else [])
-    dc_runs, _, dc_secs = measure(
+    dc_runs, dc_sessions, dc_secs = measure(
         "drift_chain_*.json",
         lambda d: [t for c in d.get("chains", []) for t in c.get("turns", [])])
     print(f"  TIER 3  [ONE NESTED SESSION PER CASE]  run_stress_prompts.py")
@@ -295,13 +355,20 @@ def main():
     if args.inventory or args.rank:
         inventory(load_issues())
     if args.rank:
-        rank_fixes(args.rank, rows, worst)
+        rank_fixes(args.rank, rows, worst,
+                   measured_draw((sp_sessions, sp_runs), (dc_sessions, dc_runs)))
 
     copies = sorted(glob.glob("/tmp/eldara-chain-*/eldara/saves/current.json")) + \
         sorted(glob.glob("/tmp/eldara-stress-*/eldara/saves/current.json"))
     if copies:
-        print(f"\nUNMINED DATA: {len(copies)} retained campaign copy(ies) on disk "
-              "-- tier 0 work, already paid for.")
+        print(f"\nRETAINED CAMPAIGN COPIES: {len(copies)} on disk -- tier 0 "
+              "material, already paid for.")
+        print("  Whether these are still worth mining is NOT something this script")
+        print("  can know; it sees files, not what has been read. This heading used")
+        print("  to assert they were UNMINED, which went on being printed after they")
+        print("  had been read exhaustively -- a claim that is sometimes false trains")
+        print("  you to skip the heading entirely. Check the found_by fields in")
+        print("  docs/open_issues.json for what has already been drawn from them.")
         for c in copies:
             try:
                 with open(c, encoding="utf-8") as fh:
