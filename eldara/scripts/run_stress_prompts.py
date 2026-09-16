@@ -131,7 +131,7 @@ def seed_campaign(workdir):
 
 
 def run_case(case, model, effort, timeout, permission_mode, instructions_path,
-             seed=False):
+             seed=False, allow_tools=None):
     """One case, one fresh session, one fresh campaign copy.
 
     The copy is per-case on purpose. Sharing one copy across the run would
@@ -157,6 +157,8 @@ def run_case(case, model, effort, timeout, permission_mode, instructions_path,
         cmd += ["--effort", effort]
     if permission_mode:
         cmd += ["--permission-mode", permission_mode]
+    if allow_tools:
+        cmd += ["--allowedTools", allow_tools]
 
     started = time.monotonic()
     try:
@@ -181,6 +183,7 @@ def run_case(case, model, effort, timeout, permission_mode, instructions_path,
         "case_id": case["id"],
         "campaign_copy": str(workdir) if retained else "(unchanged, removed)",
         "seeded": seed_note,
+        "allow_tools": allow_tools,
         "copy_start_turn": start_turn,
         "copy_end_turn": end_turn,
         "prompt_sent": case["prompt"] + STATE_ASK,
@@ -238,6 +241,10 @@ def write_transcript(out_path, label, model, effort, results, instructions_path)
         f"- Model: `{model}`" + (f", effort `{effort}`" if effort else ""),
         f"- Cases recorded: {len(results)}",
         f"- Instructions: `{instructions_path}`",
+        f"- Tools allowed: " + (f"`{results[0].get('allow_tools')}`"
+                                if results and results[0].get("allow_tools")
+                                else "default (Bash denied, so a case asking whether a "
+                                     "script was run cannot be scored)"),
         "- Campaign: " + ("seeded with earn_clean_slate.py's eleven turns before each "
                           "case, so npc_relationships is at its cap and the journal has "
                           "history" if any(r.get("seeded") for r in results)
@@ -281,6 +288,15 @@ def main():
     parser.add_argument("--case", metavar="CASE_ID", help="Run one case only.")
     parser.add_argument("--timeout", type=int, default=600,
                         help="Seconds per case (default 600).")
+    parser.add_argument("--allow-tools", metavar="SPEC",
+                        help="Passed to `claude --allowedTools`. Two of the cases ask "
+                             "whether the GM runs a script (prune_advisor.py) or guesses "
+                             "from the file, and that question cannot be answered while "
+                             "Bash is denied -- a session that wanted the script and was "
+                             "refused looks identical to one that never tried. Scope it "
+                             "to what the cases need rather than granting everything, "
+                             "e.g. 'Bash(python3 scripts/*)'. --permission-mode dontAsk "
+                             "does NOT unlock Bash in -p mode; this is what does.")
     parser.add_argument("--permission-mode",
                         help="Passed through to `claude`. Left unset by default: the "
                              "session gets whatever the CLI allows without being "
@@ -346,7 +362,8 @@ def main():
     for i, case in enumerate(cases, start=1):
         print(f"-- {i}/{len(cases)}: {case['id']} ... ", end="", flush=True)
         r = run_case(case, args.model, args.effort, args.timeout,
-                     args.permission_mode, instructions_path, args.seed)
+                     args.permission_mode, instructions_path, args.seed,
+                     args.allow_tools)
         state = "ok" if r["exit_code"] == 0 else f"exit {r['exit_code']}"
         print(f"{state}, {r['seconds']}s, {len(r['response'])} chars")
 
