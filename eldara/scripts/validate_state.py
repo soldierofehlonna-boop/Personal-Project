@@ -191,7 +191,50 @@ def find_registered_npc_id(registry, npc_id):
     return None
 
 
-def manual_checks(state):
+def companion_paths(state_path):
+    """Where to look for the campaign data files that sit ALONGSIDE a save.
+
+    validate_state.py takes a path argument, but until now it validated
+    the file at that path while reading npc_registry.json and
+    locations.json relative to the SCRIPT. Validating another campaign's
+    save therefore checked it against this campaign's registry: eight
+    retained copies were reported as having eight unregistered NPCs each,
+    confidently and wrongly. Failing loudly with a wrong answer is worse
+    than not supporting the case, because it reads as a real finding.
+
+    The rule is deliberately narrow: use a companion file only if it
+    actually sits next to the save being validated. Anything else falls
+    back to this script's own tree.
+
+    That narrowness is load-bearing, not caution for its own sake.
+    commit_state.py validates a PROPOSAL at /tmp/proposed_state.json,
+    which has no campaign around it. Deriving paths from the target
+    unconditionally would point the registry check at /tmp, find nothing,
+    and skip it -- and the is_new_npc registry check is a blocking gate,
+    so it would fail open on the one path that matters most. A proposal
+    must keep being checked against the registry of the campaign it is
+    proposed FOR.
+
+    The schema is deliberately NOT included. state_schema.json is project
+    code, not campaign data: a save is validated against THIS checkout's
+    schema on purpose, which is what makes a schema change take effect
+    for old saves.
+    """
+    registry, locations = NPC_REGISTRY_PATH, LOCATIONS_PATH
+    try:
+        here = Path(state_path).resolve().parent
+    except (OSError, ValueError):
+        return registry, locations
+    sibling_registry = here / "npc_registry.json"
+    sibling_locations = here / "locations.json"
+    if sibling_registry.exists():
+        registry = sibling_registry
+    if sibling_locations.exists():
+        locations = sibling_locations
+    return registry, locations
+
+
+def manual_checks(state, registry_path=None, locations_path=None):
     """Checks that always run, regardless of whether jsonschema is
     installed -- this is the authoritative enforcement layer."""
     errors = []
@@ -413,9 +456,11 @@ def manual_checks(state):
                 )
 
     # npc_id registry consistency, if a registry file exists.
-    if NPC_REGISTRY_PATH.exists():
+    registry_path = registry_path or NPC_REGISTRY_PATH
+    locations_path = locations_path or LOCATIONS_PATH
+    if registry_path.exists():
         try:
-            registry = load_json(NPC_REGISTRY_PATH)
+            registry = load_json(registry_path)
         except (json.JSONDecodeError, OSError, RecursionError):
             registry = {}
         for npc in npc_list:
@@ -461,9 +506,9 @@ def manual_checks(state):
     # silently accepting a typo or an invented place that would then
     # never match locations.json's route data.
     locations_data = None
-    if LOCATIONS_PATH.exists():
+    if locations_path.exists():
         try:
-            locations_data = load_json(LOCATIONS_PATH)
+            locations_data = load_json(locations_path)
         except (json.JSONDecodeError, OSError, RecursionError):
             locations_data = None
 
@@ -544,7 +589,8 @@ def run_validation(path):
     schema = load_json(SCHEMA_PATH)
 
     schema_errors = try_jsonschema_validation(state, schema)
-    manual_errors, manual_warnings = manual_checks(state)
+    registry_path, locations_path = companion_paths(path)
+    manual_errors, manual_warnings = manual_checks(state, registry_path, locations_path)
 
     all_errors = schema_errors + manual_errors
 

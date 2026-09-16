@@ -347,6 +347,37 @@ def pass2_adversarial(tmp_dir):
     results.append(("validate_state.py warns when deadline_turn and "
                     "deadline_date disagree", "disagree" in out_dis.lower(), out_dis))
 
+    # A save validated by path must be checked against the registry that
+    # sits NEXT TO IT, not the one next to this script -- and a proposal
+    # with no campaign around it must still fall back to this script's
+    # registry, because the is_new_npc check is a blocking gate and
+    # deriving paths unconditionally would make it fail open on the one
+    # path that matters most (commit_state.py validates /tmp proposals).
+    other = tmp_dir / "other_campaign" / "saves"
+    other.mkdir(parents=True, exist_ok=True)
+    (other / "npc_registry.json").write_text(
+        json.dumps({"established-elsewhere": "Someone"}), encoding="utf-8")
+    known = json.loads(json.dumps(base))
+    known["npc_relationships"] = [{"npc_id": "established-elsewhere", "name": "Someone",
+                                   "disposition": "known", "note": "n",
+                                   "is_new_npc": False}]
+    (other / "current.json").write_text(json.dumps(known), encoding="utf-8")
+    code_o, out_o = run_script(["scripts/validate_state.py", str(other / "current.json")])
+    sibling_used = code_o == 0
+
+    orphan = json.loads(json.dumps(base))
+    orphan["npc_relationships"] = [{"npc_id": "established-elsewhere", "name": "Someone",
+                                    "disposition": "known", "note": "n",
+                                    "is_new_npc": False}]
+    orphan_path = tmp_dir / "orphan_proposal.json"
+    orphan_path.write_text(json.dumps(orphan), encoding="utf-8")
+    code_p, out_p = run_script(["scripts/validate_state.py", str(orphan_path)])
+    fallback_held = "npc_registry" in out_p
+
+    results.append(("validate_state.py reads the registry beside the save, and "
+                    "still falls back for an orphan proposal",
+                    sibling_used and fallback_held, out_o + out_p))
+
     # prune_advisor.py must run without crashing and must print the
     #    "confirm or override" caveat -- we do NOT assert its ranking
     #    quality here, since it's a known-naive heuristic; this only

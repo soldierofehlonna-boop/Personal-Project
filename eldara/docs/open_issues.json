@@ -76,7 +76,7 @@
     },
     {
       "id": "validator-registry-path",
-      "status": "open",
+      "status": "fixed",
       "owner": "agent",
       "summary": "validate_state.py <path> validates the file at that path but resolves npc_registry.json relative to the SCRIPT's location, so a save from another campaign is checked against the wrong registry.",
       "evidence": "Validating all eight retained copies from the main repo reported every NPC as an unregistered new introduction -- eight confident, identical, wrong failures. Re-running each inside its own tree: all eight clean. Found by making exactly that mistake.",
@@ -96,7 +96,8 @@
           "churn": 1,
           "why": "Honest but narrower -- removes the false failure without enabling the cross-campaign check that made it useful to try."
         }
-      ]
+      ],
+      "fixed_by": "companion_paths(): registry/locations resolve beside the save when present, else fall back to the script's tree. Schema deliberately excluded (project code, not campaign data)."
     }
   ]
 }
