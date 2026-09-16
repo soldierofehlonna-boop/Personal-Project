@@ -6,3 +6,16 @@ Add a freeform note alongside a state commit via
 (or `python3 scripts/session.py commit <file> --note "..."`).
 
 ---
+
+### Turn 1 — 2026-09-16 18:00 UTC
+
+_Turn 1: assessed the ankle, climbed to the ruin, found a cold fire ring and dry-stacked cut wood_
+
+Self-critique: ran clean (self_critique.py passed)
+
+- commit_token: null -> "1-1bb5f0"
+- entities: null -> [{"name": "The roofed ruin on the slope", "type": "location", "note": "Old stonework where Chad landed, vines structural. One corner still roofed by two fallen lintels. Someone is using it: cold fire ring of eight carried stones, ash dry and unrained-on, and cut wood stacked dry against the back wall. Not abandoned."}]
+- scene: null -> "Early morning, Day 1 of Seedmonth, in the Northern March. Chad has climbed roughly two hundred yards upslope to the vine-covered stonework. He has found a cold fire ring of eight set stones and an armful of cut, squared, dry-stacked wood under the one corner that still has a roof. A single thin column of hearth smoke stands up out of the trees downhill, distance unknown."
+- status: [] -> ["Twisted right ankle -- swollen, bears weight but worsens with use; calf tight after the climb to the ruin"]
+- turn: 0 -> 1
+
