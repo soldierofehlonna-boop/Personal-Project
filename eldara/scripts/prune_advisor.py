@@ -42,6 +42,11 @@ def load_state():
         return json.load(f)
 
 
+# A gap below this is "recently mentioned" -- short enough that topping the
+# staleness ranking says nothing useful about whether the entry is prunable.
+RECENT_GAP = 3
+
+
 def rank_npcs(npcs, current_turn=None):
     """Ranks prune candidates using last_referenced_turn when it's
     present (stamped by commit_state.py's stamp_npc_recency() whenever an
@@ -57,37 +62,44 @@ def rank_npcs(npcs, current_turn=None):
     Scoring convention: HIGHER score = safer to prune (list is sorted
     descending, safest-first).
 
-    Entries WITH recency data and entries WITHOUT it are deliberately
-    kept on two non-overlapping ranges rather than one shared number
-    line: an untracked entry is capped below every possible
-    recency-based score (see UNTRACKED_SAFETY_CEILING), so "we don't
-    know how stale this is" can never look safer than "confirmed
-    mentioned N turns ago" purely by coincidence of the fallback
-    heuristic's small note/disposition adjustments landing higher than a
-    small turns-since-mention gap. Untracked entries still sort among
-    themselves by the fallback heuristic; they just can never outrank a
-    tracked entry."""
-    UNTRACKED_SAFETY_CEILING = -1000  # Always below any real turns-since-mention value.
+    Entries WITH recency data and entries WITHOUT it are returned as two
+    separate lists rather than one merged ranking, because there is no
+    correct position on a shared number line for "I don't know".
 
-    def score(npc):
-        has_recency = "last_referenced_turn" in npc and current_turn is not None
-        if has_recency:
-            # Turns since last mention is the entire signal on this
-            # branch: a real, checkable staleness measure the old
-            # heuristic never had access to.
-            return current_turn - npc["last_referenced_turn"]
-        # Original heuristic, unchanged, for entries with no recency
-        # data yet -- still carries the same documented caveat: this can
-        # misjudge a thinly-detailed-but-currently-relevant NPC. Offset
-        # below the ceiling so it never crosses into the tracked range.
-        s = 0
-        if npc.get("note"):
-            s -= 2
-        if npc.get("disposition"):
-            s -= 1
-        return UNTRACKED_SAFETY_CEILING + s
+    An earlier version put untracked entries on a range capped below
+    every tracked score, reasoning that unknown staleness should never
+    look safer than a measured one. That is true as stated and wrong in
+    effect: it means a tracked entry mentioned THIS turn (gap 0) outranks
+    every entry never mentioned at all, so the advisor's top pick becomes
+    the most recently referenced NPC whenever recency data is sparse --
+    which is the normal state early in a campaign, since
+    stamp_npc_recency() only fires on a whole-word name match. Blind
+    testing caught exactly that: against a seeded campaign the top
+    recommendation was the one load-bearing NPC, ranked above nine
+    interchangeable stubs.
 
-    return sorted(npcs, key=score, reverse=True)
+    Flipping the offset would be worse. An NPC shows as untracked when
+    their name has never matched narration, and awkwardly-named central
+    characters are prime candidates for that -- calling them the safest
+    prune is the original documented failure mode with more force.
+
+    So neither direction is used. Tracked entries rank by measured
+    staleness; untracked entries are handed back unranked, for a human to
+    judge.
+
+    Returns (tracked_ranked, untracked).
+    """
+    tracked, untracked = [], []
+    for npc in npcs:
+        if "last_referenced_turn" in npc and current_turn is not None:
+            tracked.append(npc)
+        else:
+            untracked.append(npc)
+
+    # Turns since last mention is the entire signal here: a real,
+    # checkable staleness measure, highest gap (stalest) first.
+    tracked.sort(key=lambda n: current_turn - n["last_referenced_turn"], reverse=True)
+    return tracked, untracked
 
 
 def rank_threads(threads):
@@ -130,16 +142,36 @@ def main():
 
     if field == "npc_relationships":
         current_turn = state.get("turn")
-        ranked = rank_npcs(items, current_turn=current_turn)
-        print("Ranked prune candidates (safest first):")
-        for npc in ranked:
-            recency = ""
-            if "last_referenced_turn" in npc and current_turn is not None:
+        tracked, untracked = rank_npcs(items, current_turn=current_turn)
+
+        if tracked:
+            print("Ranked by measured staleness (longest since last mention first):")
+            for npc in tracked:
                 gap = current_turn - npc["last_referenced_turn"]
-                recency = f", last referenced turn {npc['last_referenced_turn']} ({gap} turns ago)"
-            else:
-                recency = ", last referenced: unknown (predates recency tracking, or name never matched)"
-            print(f"  - {npc.get('name')} ({npc.get('npc_id')}) — disposition: {npc.get('disposition', '(none)')!r}{recency}")
+                print(f"  - {npc.get('name')} ({npc.get('npc_id')}) — disposition: "
+                      f"{npc.get('disposition', '(none)')!r}, last referenced turn "
+                      f"{npc['last_referenced_turn']} ({gap} turns ago)")
+            # Ordering these is not the same as any of them being safe. With
+            # one tracked entry the "first" is also the last, and a list
+            # headed "safest first" would present an NPC mentioned this turn
+            # as the prune to make.
+            stalest_gap = current_turn - tracked[0]["last_referenced_turn"]
+            if stalest_gap < RECENT_GAP:
+                print(f"\n  None of these is actually stale -- even the longest gap is "
+                      f"{stalest_gap} turn(s).\n  Being top of this list does not make an "
+                      "entry a safe prune; it only means\n  nothing tracked has gone "
+                      "longer unmentioned.")
+        else:
+            print("No entry has recency data yet, so nothing can be ranked by staleness.")
+
+        if untracked:
+            print("\nNOT RANKABLE -- no recency data (predates recency tracking, or the")
+            print("name has never matched narration). Deliberately left unordered: an")
+            print("unmatched name is as often a central character as a forgettable one,")
+            print("so neither end of the list would be honest. Judge these yourself:")
+            for npc in sorted(untracked, key=lambda n: str(n.get("npc_id"))):
+                print(f"  - {npc.get('name')} ({npc.get('npc_id')}) — disposition: "
+                      f"{npc.get('disposition', '(none)')!r}")
     else:
         ranked = rank_threads(items)
         print("Ranked prune candidates (safest first):")
@@ -147,7 +179,7 @@ def main():
             deadline = f", deadline_turn={t['deadline_turn']}" if t.get("deadline_turn") else ""
             print(f"  - \"{t.get('text')}\" (added_turn={t.get('added_turn')}, active={t.get('active', False)}{deadline})")
 
-    print("\nThis is a ranked suggestion, not a decision -- confirm or override the top pick.")
+    print("\nThis is a ranked suggestion, not a decision -- confirm or override it.")
     print("The ranking is a naive heuristic (see this script's own docstring for its known")
     print("limitation); a narratively important NPC or thread can rank as 'safe' here.")
 
