@@ -30,6 +30,7 @@ Usage:
     python3 scripts/prune_advisor.py open_threads
 """
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -40,6 +41,60 @@ CURRENT_PATH = ROOT / "saves" / "current.json"
 def load_state():
     with open(CURRENT_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def load_bearing_reasons(npc, state):
+    """Everywhere else in the save this NPC is anchored.
+
+    Staleness says when someone was last mentioned in narration. It says
+    nothing about whether the rest of the state leans on them, and those
+    come apart: the NPC that blind testing found at the top of the prune
+    list held the only open thread, the only entity, and the provenance
+    of the only non-baseline gear Chad owned. None of that is visible to
+    a recency number.
+
+    Matched on the NPC's name AND on the words in their npc_id, because
+    ids are descriptive slugs and the reference is often to the role
+    rather than the name -- "innkeeper-maren" is anchored by a gear entry
+    reading "Given by an innkeeper against the cold", which a name-only
+    match misses entirely. Whole-word matching only, so "innkeeper" does
+    not fire on "a roadside inn".
+
+    Known false positive, accepted rather than engineered around: a name
+    that is also an ordinary English word over-matches. An NPC called
+    Will is reported as anchored by a thread reading "Find the will of
+    the old lord". That is the safe direction for an annotation a human
+    reads and dismisses in a second -- the expensive error here is the
+    other one, silently failing to mark someone the rest of the save
+    leans on, and then pruning them. This never blocks anything, so it
+    can afford to be noisy in a way the commit gate cannot.
+    """
+    terms = set()
+    name = str(npc.get("name") or "").strip().lower()
+    if name:
+        terms.add(name)
+    for part in re.split(r"[-_\s]+", str(npc.get("npc_id") or "").lower()):
+        if len(part) > 2:
+            terms.add(part)
+    if not terms:
+        return []
+
+    def mentions(text):
+        blob = str(text or "").lower()
+        return any(re.search(rf"\b{re.escape(t)}\b", blob) for t in terms)
+
+    reasons = []
+    for thread in state.get("open_threads", []) or []:
+        if isinstance(thread, dict) and mentions(thread.get("text")):
+            reasons.append(f'open thread "{thread.get("text")}"')
+    for entity in state.get("entities", []) or []:
+        if isinstance(entity, dict) and mentions(
+                f"{entity.get('name','')} {entity.get('note','')}"):
+            reasons.append(f'entity "{entity.get("name")}"')
+    for gear in state.get("gear", []) or []:
+        if isinstance(gear, dict) and mentions(gear.get("acquired_event")):
+            reasons.append(f'gear "{gear.get("name")}" came from them')
+    return reasons
 
 
 # A gap below this is "recently mentioned" -- short enough that topping the
@@ -151,6 +206,8 @@ def main():
                 print(f"  - {npc.get('name')} ({npc.get('npc_id')}) — disposition: "
                       f"{npc.get('disposition', '(none)')!r}, last referenced turn "
                       f"{npc['last_referenced_turn']} ({gap} turns ago)")
+                for reason in load_bearing_reasons(npc, state):
+                    print(f"      LOAD-BEARING: {reason}")
             # Ordering these is not the same as any of them being safe. With
             # one tracked entry the "first" is also the last, and a list
             # headed "safest first" would present an NPC mentioned this turn
@@ -172,12 +229,23 @@ def main():
             for npc in sorted(untracked, key=lambda n: str(n.get("npc_id"))):
                 print(f"  - {npc.get('name')} ({npc.get('npc_id')}) — disposition: "
                       f"{npc.get('disposition', '(none)')!r}")
+                for reason in load_bearing_reasons(npc, state):
+                    print(f"      LOAD-BEARING: {reason}")
     else:
         ranked = rank_threads(items)
         print("Ranked prune candidates (safest first):")
         for t in ranked:
             deadline = f", deadline_turn={t['deadline_turn']}" if t.get("deadline_turn") else ""
             print(f"  - \"{t.get('text')}\" (added_turn={t.get('added_turn')}, active={t.get('active', False)}{deadline})")
+
+    if field == "npc_relationships":
+        anchored = [n for n in items if isinstance(n, dict)
+                    and load_bearing_reasons(n, state)]
+        if anchored:
+            print(f"\n{len(anchored)} entry(ies) marked LOAD-BEARING are referenced "
+                  "elsewhere in the save.\nPruning one leaves those references pointing "
+                  "at an NPC no longer in\nnpc_relationships. The registry still "
+                  "remembers them, but the working set\nwill not.")
 
     print("\nThis is a ranked suggestion, not a decision -- confirm or override it.")
     print("The ranking is a naive heuristic (see this script's own docstring for its known")
