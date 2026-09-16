@@ -497,8 +497,12 @@ def manual_checks(state, registry_path=None, locations_path=None):
         # only spends soft-cap space -- 40% of one chain's array was
         # closed business -- and pushes toward the cap where pruning,
         # itself a known-risky path, gets invoked.
-        if thread.get("active") is False and RESOLVED_PROSE.search(
-                str(thread.get("text") or "")):
+        # `active` is optional, so gating on `is False` meant "Room fee
+        # settled in full" with active:true, or with no active key at all,
+        # was never flagged -- the two shapes most likely to be a mistake,
+        # since a thread that is genuinely finished and still marked live is
+        # worse than one marked inactive.
+        if RESOLVED_PROSE.search(str(thread.get("text") or "")):
             warnings.append(
                 f"open_thread '{thread.get('text', '')[:40]}...' reads as already "
                 f"resolved but is still in open_threads. A resolved thread is "
@@ -539,7 +543,18 @@ def manual_checks(state, registry_path=None, locations_path=None):
         if stated:
             if isinstance(amount, dict):
                 for denom, values in stated.items():
-                    if denom in amount and amount[denom] not in values:
+                    if denom not in amount:
+                        # Only shared denominations used to be compared, so
+                        # text "Owes Maren 14 copper" with amount
+                        # {"silver": 3} passed in total silence -- the two
+                        # disagreed about the DENOMINATION and the check
+                        # looked the other way.
+                        warnings.append(
+                            f"open_thread '{thread.get('text', '')[:40]}...' text "
+                            f"names {sorted(values)} {denom} but `amount` records "
+                            f"no {denom} at all -- the prose and the record "
+                            f"disagree about what is owed")
+                    elif amount[denom] not in values:
                         warnings.append(
                             f"open_thread '{thread.get('text', '')[:40]}...' text "
                             f"names {sorted(values)} {denom} but "

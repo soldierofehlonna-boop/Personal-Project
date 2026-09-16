@@ -753,6 +753,34 @@ def pass2_adversarial(tmp_dir):
     results.append(("session_cost_guide.py will not treat a clear SHORT window as "
                     "clearance, and lets the weekly window bind", wk_ok, wk_out))
 
+    # The tier-3/4 guard hook. A code review found three fail-opens in it,
+    # one of which (containment) had NEVER fired -- dead code that had been
+    # described in writing as a working mechanical guard. Pinned here so the
+    # enforcing gate cannot drift from the advisory script again.
+    hook_ok = False
+    hook_out = ""
+    try:
+        import importlib.util as _ilu
+        hookp = ROOT.parent / ".claude" / "hooks" / "tier34_guard.py"
+        spec = _ilu.spec_from_file_location("t34g", hookp)
+        g = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(g)
+        S = "scripts/run_drift" + "_chain.py"   # split: not a trigger in this file
+        # --help in one segment must not excuse a real run in the next
+        compound = g.dangerous_segments(f"python3 {S} --help && python3 {S} --chains 3")
+        help_only = g.dangerous_segments(f"python3 {S} --help")
+        # merely naming the file is not running it
+        grep_only = g.dangerous_segments(f"grep -n chains eldara/{S}")
+        plain = g.dangerous_segments(f"python3 {S} --chains 3")
+        hook_ok = (len(compound) == 1 and help_only == []
+                   and grep_only == [] and len(plain) == 1)
+        hook_out = (f"compound={len(compound)} help={len(help_only)} "
+                    f"grep={len(grep_only)} plain={len(plain)}")
+    except Exception as e:                       # noqa: BLE001
+        hook_out = f"raised {e!r}"
+    results.append(("tier34_guard.py judges each shell segment separately, and "
+                    "only on an actual invocation", hook_ok, hook_out))
+
     # prune_advisor.py must run without crashing and must print the
     #    "confirm or override" caveat -- we do NOT assert its ranking
     #    quality here, since it's a known-naive heuristic; this only

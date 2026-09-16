@@ -10,9 +10,17 @@ makes repeatedly.
 
 WHAT THIS CAN AND CANNOT ENFORCE -- read this before trusting it
 ----------------------------------------------------------------
-Three of the four guards below are fully mechanical: they read the process
-table and the filesystem, and nothing the agent believes can talk them out
-of it.
+The kill switch and the concurrency guard are fully mechanical: they read
+the filesystem and the process table, and nothing the agent believes can
+talk them out of it.
+
+This docstring previously claimed THREE such guards. That was wrong, and
+a code review caught it: the containment guard compared paths that could
+never be equal, so it had never once fired -- dead code in the shape of
+protection, counted on precisely because it was written down here. It has
+been replaced with a narrower check that can actually fire. Treat this
+paragraph as a claim to re-verify, not a guarantee; it has been wrong
+before.
 
 The fourth (FRESH) is different and must not be oversold. No live
 rate-limit status is readable from a shell on this machine -- it was
@@ -72,12 +80,33 @@ BYPASS = CLAUDE_DIR / "ALLOW_EXPENSIVE_RUN"
 # true; one from this morning is not.
 MAX_AGE_SECONDS = 30 * 60
 
-TIER34 = re.compile(r"\b(run_stress_prompts|run_drift_chain)\.py\b")
+# Must look like RUNNING one of these, not merely naming one. The pattern
+# used to match the filename anywhere, so `grep run_drift_chain.py` and
+# `git show HEAD:...run_drift_chain.py` were denied for want of a fresh
+# budget record -- read-only commands blocked by a guard about spending,
+# which pushes toward the single-use bypass rather than away from it.
+TIER34 = re.compile(
+    r"(?:^|[\s;&|])(?:python3?|py)\s+\S*\b(run_stress_prompts|run_drift_chain)\.py\b"
+    r"|(?:^|[\s;&|])\./\S*\b(run_stress_prompts|run_drift_chain)\.py\b")
 
 # Flags that make a tier-3/4 script harmless: it prints and exits without
 # spawning anything. Blocking these would train the agent to route around
 # the guard, which is worse than not having it.
 HARMLESS = re.compile(r"(^|\s)--(help|dry-run|list-stress-prompts)(\s|$)|(^|\s)-h(\s|$)")
+
+# Shell operators that separate one command from the next. The harmless
+# check used to be applied to the WHOLE command string, so
+# `run_drift_chain.py --help && run_drift_chain.py --chains 3` was read as
+# harmless and bypassed all four guards -- the --help in segment one
+# excused the real run in segment two. Every segment is now judged on its
+# own, and the guards fire if ANY segment is a real invocation.
+SEGMENT_SPLIT = re.compile(r"&&|\|\||;|\||\n")
+
+
+def dangerous_segments(command):
+    """Segments that actually launch a tier-3/4 run."""
+    return [s for s in SEGMENT_SPLIT.split(command)
+            if TIER34.search(s) and not HARMLESS.search(s)]
 
 
 def deny(reason):
@@ -137,6 +166,46 @@ def record(status, window=None, resets_at=None):
           f"{time.strftime('%H:%M:%SZ', time.gmtime(now))}")
 
 
+def long_window_clear():
+    """Is a day-or-longer window on record, recent, and allowed?
+
+    The budget guard used to check only `status == "allowed"` on the single
+    most recent reading, ignoring which window it described. So a
+    five_hour:allowed record green-lit an 18-session tier-4 run while
+    session_cost_guide.budget() returned "unknown-long" for the same
+    history and CLAUDE.md said short-window clearance is not clearance.
+    The fail-open was closed in the advisory script and left open in the
+    gate that actually enforces -- the wrong one of the two to miss.
+
+    rate_limit_info reports one window at a time, so a clear five-hour
+    reading says nothing about the weekly position, and the weekly one is
+    what blocks a run for days.
+    """
+    if not HISTORY_FILE.exists():
+        return False, "no window history recorded at all"
+    try:
+        hist = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        return False, f"window history unreadable ({e})"
+    now = int(time.time())
+    for window, rec in hist.items():
+        name = str(window).lower()
+        if not ("day" in name or "week" in name):
+            continue
+        if str(rec.get("status")) != "allowed":
+            return False, (f"{window} last read {rec.get('status')!r}")
+        resets = rec.get("resets_at")
+        if resets and int(resets) <= now:
+            return False, f"{window}'s recorded reset has already passed"
+        age = now - int(rec.get("recorded_at") or 0)
+        if age > MAX_AGE_SECONDS:
+            return False, (f"{window} was observed {age // 60} min ago "
+                           f"(max {MAX_AGE_SECONDS // 60})")
+        return True, f"{window} allowed"
+    return False, ("only a short window has been observed; a clear five-hour "
+                   "reading is not clearance for a run that spans days")
+
+
 def running_tier34():
     """Tier-3/4 processes already running, excluding this hook itself.
 
@@ -179,7 +248,7 @@ def main():
         allow()            # malformed input is not the agent's fault
     command = str((payload.get("tool_input") or {}).get("command") or "")
 
-    if not TIER34.search(command) or HARMLESS.search(command):
+    if not dangerous_segments(command):
         allow()
 
     # --- guard 1: kill switch (mechanical) ---
@@ -187,16 +256,30 @@ def main():
         deny(f"BLOCKED: {KILL_SWITCH} exists. Expensive nested-session runs "
              "are switched off. Remove that file to re-enable them.")
 
-    # --- guard 2: containment (mechanical) ---
-    # These harnesses commit and push. Pointed at the live campaign they
-    # would advance the real save and push it to the remote.
-    live = REPO / "eldara" / "saves" / "current.json"
-    cwd = Path(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
-    if live.exists() and (cwd / "saves" / "current.json").resolve() == live.resolve():
-        deny("BLOCKED: this would run a nested-session harness with the LIVE "
-             "campaign as the working directory. These scripts commit and "
-             "push. Run against a throwaway copy (the harnesses make their "
-             "own -- invoke them from the repo, not from eldara/).")
+    # --- guard 2: containment ---
+    # The previous version of this guard COULD NOT FIRE. It compared
+    # $CLAUDE_PROJECT_DIR/saves/current.json against
+    # eldara/saves/current.json -- but the project dir is the repo root,
+    # which has no saves/ at all, so the paths never matched and the check
+    # was dead code wearing the shape of protection. It was also described
+    # to the user as one of three working mechanical guards. A check that
+    # can never fire is worse than no check, because it is counted on.
+    #
+    # What it was guarding against also turned out not to be reachable the
+    # way it imagined: both harnesses derive ROOT from their own location
+    # and copy FROM the live campaign into a throwaway, so invoking them
+    # normally never makes the live campaign the working tree.
+    #
+    # What IS worth refusing is an invocation that has been pointed at the
+    # live saves explicitly -- a path argument or an env override aimed at
+    # eldara/saves. That is narrow, but it is real and it can fire.
+    live_saves = str((REPO / "eldara" / "saves").resolve())
+    for seg in dangerous_segments(command):
+        if live_saves in seg or "eldara/saves" in seg:
+            deny("BLOCKED: this invocation names the LIVE campaign's saves "
+                 f"directory ({live_saves}). These harnesses commit and push; "
+                 "they must run against their own throwaway copies, which they "
+                 "make for themselves. Drop the path argument.")
 
     # --- guard 3: concurrency (mechanical) ---
     busy = running_tier34()
@@ -242,6 +325,16 @@ def main():
                            "tier 0-2 work instead.\nTier 0 (re-analysing artifacts "
                            "already on disk) has repeatedly beaten tier 4 on "
                            "findings per minute.")
+
+    if problem is None:
+        ok_long, why = long_window_clear()
+        if not ok_long:
+            problem = (f"the WEEKLY window is not clear: {why}.\n"
+                       f"Only one window is reported at a time, so a clear "
+                       f"short window says nothing about the weekly position "
+                       f"-- and the weekly one is what blocks a run for days. "
+                       f"Record a day-or-longer window with "
+                       f"--record <status> <window> <resetsAt>.")
 
     if problem is None:
         allow()

@@ -31,12 +31,30 @@ import os as _os
 NEW = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "validate_state.py")
 OLD = sys.argv[1] if len(sys.argv) > 1 else "/tmp/validate_before.py"
 
+def _require(script, label):
+    """A missing comparison script must not yield a silent empty set.
+
+    findings() returns a set parsed from stdout, so a nonexistent baseline
+    produced an empty set for every state: every new finding read as new,
+    and the regression half printed "(none -- nothing was silently
+    dropped)" while having compared against nothing at all. That is the
+    exact shape this script exists to catch, in the script itself.
+    """
+    if not os.path.exists(script):
+        sys.exit(f"FAIL: {label} validator not found at {script}. Extract one "
+                 f"with `git show <sha>:eldara/scripts/validate_state.py > "
+                 f"{script}` -- comparing against a missing file would report "
+                 f"every finding as new and every regression as absent.")
+
+
 def findings(script, path, cwd):
     r = subprocess.run([sys.executable, script, path], cwd=cwd,
                        capture_output=True, text=True, timeout=60)
     out = (r.stdout + r.stderr)
     return {l.strip().lstrip("- ").strip() for l in out.splitlines()
             if l.strip().startswith("-") or "WARNING" in l}
+
+_require(NEW, "current"); _require(OLD, "baseline")
 
 copies = sorted(glob.glob("/tmp/eldara-chain-*/eldara")) + sorted(glob.glob("/tmp/eldara-stress-*/eldara"))
 states = 0

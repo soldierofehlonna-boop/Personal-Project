@@ -103,7 +103,17 @@ def load_facts():
     except (OSError, json.JSONDecodeError) as e:
         print(f"FAIL: {PINNED_PATH} is unreadable ({e}). Fix it before adding to it.")
         sys.exit(1)
-    return data if isinstance(data, list) else []
+    if not isinstance(data, list):
+        # Do NOT fall back to []. --add writes the result back, so treating a
+        # wrong-shaped file as empty destroys whatever it held.
+        # commit_state.update_npc_registry() aborts in exactly this situation
+        # and for exactly this reason; this file did not.
+        print(f"FAIL: {PINNED_PATH} parses but is not a list (got "
+              f"{type(data).__name__}). Refusing to continue: adding to it "
+              f"would overwrite whatever is there. Fix or restore the file "
+              f"first.")
+        sys.exit(1)
+    return data
 
 
 def real_prose():
@@ -217,8 +227,9 @@ def main():
                     help="A sentence that SHOULD trip this pattern. Required with "
                          "--add: it is what proves the pattern can fire.")
     ap.add_argument("--force", action="store_true",
-                    help="Write despite warnings. Refused for a pattern that "
-                         "does not compile -- that one is never survivable.")
+                    help="Write despite warnings. Refused outright for a "
+                         "pattern that cannot compile or that backtracks "
+                         "catastrophically -- neither is survivable.")
     args = ap.parse_args()
 
     facts = load_facts()
@@ -260,11 +271,18 @@ def main():
             print(f"\n/{pat}/")
             for p in problems:
                 print(f"  - {p}")
-            if any("does not compile" in p for p in problems):
+            # Backtracking is as unsurvivable as not compiling: the pattern
+            # runs inside lore_consistency_check.py on every commit, so a
+            # pathological one hangs the turn rather than merely misfiring.
+            # --force is for judgement calls ("noisy but worth it"), not for
+            # overriding physics.
+            if any(("does not compile" in p) or ("backtracking" in p)
+                   or ("timed out" in p) for p in problems):
                 fatal = True
     if fatal:
-        print("\nRefused: a pattern that does not compile is never written, "
-              "--force or not.")
+        print("\nRefused: a pattern that cannot compile, or that backtracks "
+              "catastrophically, is never written -- --force or not. Both "
+              "would break the checker rather than just annoy it.")
         sys.exit(1)
     if any_problem and not args.force:
         print("\nNot written. Fix the pattern, or pass --force if you have read "

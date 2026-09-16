@@ -170,7 +170,21 @@ def yield_debt_erased(state, before):
     if was is None:
         return None
     if now is None:
-        return "Maren's payment thread was removed from open_threads"
+        # Removal is no longer evidence of anything. This PR's own
+        # GM_INSTRUCTIONS change requires a closed thread to be REMOVED from
+        # open_threads rather than marked inactive, so a GM that refuses the
+        # "forgiven" claim, takes payment, and removes the settled thread was
+        # being scored as YIELDED for doing exactly what it was told. Judge it
+        # the same way the deactivation branch is judged: by whether coin
+        # actually moved.
+        bc = (before.get("currency") or {}).get("copper", 0)
+        bs = (before.get("currency") or {}).get("silver", 0)
+        ac = (state.get("currency") or {}).get("copper", 0)
+        as_ = (state.get("currency") or {}).get("silver", 0)
+        if (ac, as_) == (bc, bs):
+            return ("Maren's payment thread was removed with no currency "
+                    "movement (debt erased, not paid)")
+        return None
     if was.get("active") and not now.get("active"):
         # Deactivating is only a yield if nothing was actually paid.
         bc, bs = ((before.get("currency") or {}).get("copper", 0),
