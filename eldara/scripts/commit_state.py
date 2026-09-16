@@ -72,6 +72,7 @@ CURRENT_PATH = SAVES_DIR / "current.json"
 BACKUP_DIR = SAVES_DIR / "backups"
 NPC_REGISTRY_PATH = SAVES_DIR / "npc_registry.json"
 NARRATION_DIR = SAVES_DIR / "narration"
+CONTINUITY_LOG_PATH = SAVES_DIR / "continuity_log.md"
 LOCATIONS_PATH = ROOT / "saves" / "locations.json"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -392,6 +393,66 @@ def stamp_npc_recency(state, narration_text):
             npc["last_referenced_turn"] = state.get("turn")
 
 
+def archive_evicted_notes(old_state, new_state):
+    """Append any continuity_note that has just left the working set to
+    saves/continuity_log.md, before it is gone for good.
+
+    continuity_notes is capped at 5, and validate_state.py treats that cap
+    as a hard ERROR -- so a sixth note cannot be committed at all. Eviction
+    is therefore not sloppiness the GM could avoid; it is forced by a
+    blocking gate. Until now nothing caught what fell out.
+
+    What fell out was load-bearing. Across three blind chains, ten notes
+    were evicted, and one of them was this:
+
+        "Turn 13: a lantern 'carried since the crossing' was asserted in
+         the player prompt -- neither a lantern nor a crossing was
+         established..."
+
+    That is the record of a successful refusal. The project's defence
+    against a player rewriting established fact is exactly the thing the
+    cap discarded, and a later turn pressed on the same lantern would find
+    no trace that it had already been refused once.
+
+    This mirrors snapshot_pruned_npcs() above, which solves the identical
+    problem for npc_relationships: a capped working set backed by an
+    uncapped permanent record (npc_registry.json). continuity_notes had
+    the cap and no registry. This is the registry.
+
+    Append-only and never rewritten, so the log cannot lose an entry the
+    way the working set does. Failure is non-fatal for the same reason
+    narration archiving is -- a turn that passed its gates must not be
+    lost because an archive write failed.
+    """
+    old = [str(x) for x in (old_state.get("continuity_notes") or [])]
+    new = {str(x) for x in (new_state.get("continuity_notes") or [])}
+    evicted = [x for x in old if x not in new]
+    if not evicted:
+        return []
+    try:
+        header = ""
+        if not CONTINUITY_LOG_PATH.exists():
+            header = ("# Continuity log\n\n"
+                      "Continuity notes evicted from `saves/current.json` when the\n"
+                      "5-entry soft cap forced them out. The working set is what the\n"
+                      "GM reads each turn; this is the permanent record, so a refusal\n"
+                      "or a reconciliation recorded once is not lost when the sixth\n"
+                      "note arrives. Append-only.\n")
+        with open(CONTINUITY_LOG_PATH, "a", encoding="utf-8") as f:
+            if header:
+                f.write(header)
+            f.write(f"\n## Evicted at turn {new_state.get('turn')} "
+                    f"(commit_token {new_state.get('commit_token', '?')})\n\n")
+            for note in evicted:
+                f.write(f"- {note}\n")
+        return evicted
+    except OSError as e:
+        print(f"WARNING: could not archive {len(evicted)} evicted continuity "
+              f"note(s) ({e}). The commit itself is unaffected, but those notes "
+              f"are now only in git history.")
+        return []
+
+
 def persist_narration(state, critique_text):
     """Write this turn's narration to saves/narration/, beside the state.
 
@@ -438,11 +499,25 @@ def persist_narration(state, critique_text):
         token = state.get("commit_token", "")
         path = NARRATION_DIR / f"turn-{turn:04d}.md" if isinstance(turn, int) \
             else NARRATION_DIR / "turn-unknown.md"
-        header = (f"# Turn {turn}\n\n"
-                  f"- commit_token: `{token}`\n"
-                  f"- in_world_date: {state.get('in_world_date')}\n\n"
-                  f"---\n\n")
-        path.write_text(header + critique_text.rstrip() + "\n", encoding="utf-8")
+        # APPEND, never overwrite. A turn can legitimately be committed
+        # more than once: a reconciliation commit holds the turn number and
+        # changes only the commit_token, and a blind chain did exactly that
+        # twice in one run. Naming the file by turn alone meant the second
+        # commit silently destroyed the first turn's prose -- an archive
+        # that loses evidence is worse than no archive, because it looks
+        # complete. Each commit gets its own section, identified by the
+        # token that distinguishes it.
+        entry = (f"## commit_token `{token}`\n\n"
+                 f"- in_world_date: {state.get('in_world_date')}\n\n"
+                 f"{critique_text.rstrip()}\n")
+        if path.exists():
+            existing = path.read_text(encoding="utf-8")
+            if f"`{token}`" in existing:
+                return path          # same commit re-archived; nothing to add
+            with open(path, "a", encoding="utf-8") as f:
+                f.write("\n---\n\n" + entry)
+        else:
+            path.write_text(f"# Turn {turn}\n\n" + entry, encoding="utf-8")
         return path
     except OSError as e:
         print(f"WARNING: could not archive this turn's narration ({e}). "
@@ -460,6 +535,8 @@ def git_commit_if_repo():
         return False, None
 
     files = ["saves/current.json", "saves/npc_registry.json", "saves/journal.md"]
+    if CONTINUITY_LOG_PATH.exists():
+        files.append("saves/continuity_log.md")
     # Only pass a path git can actually resolve. `git add a b missing` is
     # fatal and stages NOTHING -- not even the paths that do exist -- so
     # naming saves/narration unconditionally would, on any campaign that
@@ -730,11 +807,15 @@ def main():
         if arrived:
             note = f"{note} (arrived at {new_state.get('current_location')}; travel cleared automatically)" if note else \
                 f"Arrived at {new_state.get('current_location')}; travel cleared automatically"
+        evicted = archive_evicted_notes(old_state, new_state)
         narration_path = persist_narration(new_state, critique_text)
         append_journal(old_state, new_state, note=note, critique_status=critique_status)
         committed, git_error = git_commit_if_repo()
         if narration_path:
             print(f"(narration archived: {narration_path.relative_to(ROOT)})")
+        if evicted:
+            print(f"({len(evicted)} continuity note(s) evicted at the cap, "
+                  f"archived to saves/continuity_log.md)")
 
         print("Commit complete.")
         if committed:

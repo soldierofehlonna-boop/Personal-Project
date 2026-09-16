@@ -168,6 +168,35 @@
         }
       ],
       "fixed_by": "companion_paths(): registry/locations resolve beside the save when present, else fall back to the script's tree. Schema deliberately excluded (project code, not campaign data)."
+    },
+    {
+      "id": "continuity-notes-evicted-unarchived",
+      "status": "fixed",
+      "owner": "agent",
+      "summary": "continuity_notes is capped at 5 and the cap is a hard ERROR, so eviction is forced; nothing caught what fell out.",
+      "evidence": "Per-turn sweep of 3 chains: 10 notes evicted. One was the record of a successful refusal -- \"Turn 13: a lantern 'carried since the crossing' was asserted... neither a lantern nor a crossing was established\". npc_relationships has the same cap problem and IS backed by npc_registry.json; continuity_notes had the cap and no registry.",
+      "found_by": "tier-0 per-turn git-history sweep",
+      "fixed_by": "commit_state.archive_evicted_notes() appends to saves/continuity_log.md, mirroring snapshot_pruned_npcs()",
+      "candidates": []
+    },
+    {
+      "id": "narration-same-turn-clobber",
+      "status": "fixed",
+      "owner": "agent",
+      "summary": "persist_narration() named files by turn alone, so a second commit at the same turn silently destroyed the first turn's prose.",
+      "evidence": "Chain A committed turn 13 and turn 15 twice each (reconciliation commits holding the turn, changing only commit_token). Reproduced directly: first narration gone, no warning. An archive that loses evidence is worse than none because it looks complete.",
+      "found_by": "self-review of the same day's diff",
+      "fixed_by": "append a per-commit_token section instead of overwriting; idempotent on re-archive",
+      "candidates": []
+    },
+    {
+      "id": "no-write-path-for-pinned-facts",
+      "status": "open",
+      "owner": "agent",
+      "summary": "saves/pinned_facts.json and saves/locations.json are READ by the tooling (lore_consistency_check.py, validate_state.py, location_lookup.py) but no script writes either. There is no supported way to add a pinned fact.",
+      "evidence": "Blind GMs raised this independently at least four times across runs and stopped each time: 'I tried to add Maren's no-credit terms to saves/pinned_facts.json -- exactly the kind of short load-bearing fact that should be hard-checked every turn rather than only surfacing on keyword match... The write needs your approval.' A later turn: 'That edit wasn't approved last time.' One GM also correctly DECLINED to pin a date, reasoning no regex would catch drift on it honestly -- so the judgement is sound and only the mechanism is missing.",
+      "found_by": "tier-0 mining of GM-raised deferred work in run transcripts",
+      "candidates": []
     }
   ]
 }

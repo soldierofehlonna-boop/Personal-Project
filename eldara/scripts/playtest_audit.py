@@ -424,12 +424,23 @@ def pass2_adversarial(tmp_dir):
                   "in_world_date": {"day": 3, "month": "Seedmonth", "year": 1}}
             written = cs.persist_narration(st, "He counts the coin twice and says nothing.")
             blank = cs.persist_narration(st, "   ")
+            # A turn can be committed twice -- a reconciliation commit holds
+            # the turn and changes only the token, which a blind chain did
+            # twice in one run. The second must not destroy the first.
+            again = cs.persist_narration(
+                {**st, "commit_token": "7-def456"}, "A reconciliation, same turn.")
+            dup = cs.persist_narration(
+                {**st, "commit_token": "7-def456"}, "A reconciliation, same turn.")
             if written and written.exists():
                 body = written.read_text(encoding="utf-8")
                 narration_ok = ("7-abc123" in body
                                 and "counts the coin twice" in body
                                 and written.name == "turn-0007.md"
-                                and blank is None)
+                                and blank is None
+                                and again == written
+                                and "A reconciliation, same turn." in body
+                                and body.count("7-def456") == 1
+                                and dup == written)
                 narration_out = body[:200]
         finally:
             cs.NARRATION_DIR = original
@@ -515,6 +526,39 @@ def pass2_adversarial(tmp_dir):
     results.append(("validate_state.py asks for an amount on an obligation, but "
                     "not on a thread that merely mentions coins",
                     obligation_flagged and non_obligation_quiet, out_ow + out_h))
+
+    # continuity_notes is capped at 5 and that cap is a hard ERROR, so a
+    # sixth note cannot be committed -- eviction is forced, not optional.
+    # Across three blind chains ten notes were evicted, one of them the
+    # record of a successful refusal ("a lantern 'carried since the
+    # crossing' was asserted... neither a lantern nor a crossing was
+    # established"). Nothing caught what fell out. Checked by importing the
+    # archiver directly, as with persist_narration above.
+    evict_ok = False
+    evict_out = ""
+    try:
+        import importlib
+        cs2 = importlib.import_module("commit_state")
+        orig_log = cs2.CONTINUITY_LOG_PATH
+        cs2.CONTINUITY_LOG_PATH = tmp_dir / "continuity_probe.md"
+        try:
+            old = {"continuity_notes": ["kept", "about to be evicted"]}
+            new = {"continuity_notes": ["kept", "brand new"], "turn": 9,
+                   "commit_token": "9-zz"}
+            got = cs2.archive_evicted_notes(old, new)
+            body = cs2.CONTINUITY_LOG_PATH.read_text(encoding="utf-8")
+            # the evicted note is archived; the retained one is not re-logged
+            evict_ok = (got == ["about to be evicted"]
+                        and "about to be evicted" in body
+                        and "brand new" not in body
+                        and cs2.archive_evicted_notes(new, new) == [])
+            evict_out = body[:200]
+        finally:
+            cs2.CONTINUITY_LOG_PATH = orig_log
+    except Exception as e:                       # noqa: BLE001
+        evict_out = f"raised {e!r}"
+    results.append(("commit_state.py archives continuity notes evicted at the "
+                    "soft cap", evict_ok, evict_out))
 
     # prune_advisor.py must run without crashing and must print the
     #    "confirm or override" caveat -- we do NOT assert its ranking
