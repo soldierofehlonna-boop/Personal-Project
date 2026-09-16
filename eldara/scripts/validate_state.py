@@ -358,12 +358,58 @@ def manual_checks(state):
             errors.append(
                 f"open_thread '{thread.get('text', '')[:40]}...' has deadline_turn <= added_turn"
             )
-        if thread.get("active") and deadline is not None:
+        # deadline_date is checked FIRST and wins where both are present.
+        # A turn count is the wrong unit for an obligation the fiction dates
+        # in days: turns and days advance at rates measured between 0.00 and
+        # 1.09 days/turn, so the same deadline_turn means a different date
+        # in every campaign, and drifts within one. Blind testing caught a
+        # GM re-pegging deadline_turn 15 -> 18 by hand and journalling that
+        # it was correcting proxy drift, not extending the story.
+        ddate = thread.get("deadline_date")
+        deadline_ord = date_ordinal(ddate) if isinstance(ddate, dict) else None
+        today_ord = date_ordinal(state.get("in_world_date"))
+
+        if ddate is not None and deadline_ord is None:
+            errors.append(
+                f"open_thread '{thread.get('text', '')[:40]}...' has a "
+                f"deadline_date that is not a usable date ({ddate!r})"
+            )
+        if deadline_ord is not None and today_ord is not None:
+            added = thread.get("added_turn")
+            if thread.get("active") and today_ord > deadline_ord:
+                warnings.append(
+                    f"open_thread '{thread.get('text', '')[:40]}...' has a lapsed "
+                    f"active deadline (deadline_date={ddate.get('day')} "
+                    f"{ddate.get('month')} {ddate.get('year')}, and it is now "
+                    f"{(state.get('in_world_date') or {}).get('day')} "
+                    f"{(state.get('in_world_date') or {}).get('month')})"
+                )
+            # Fix E: the two units disagreeing is the bug becoming visible.
+            # Only reported when the turn proxy says lapsed and the date says
+            # otherwise or vice versa -- not on every mismatch, since the two
+            # legitimately differ in magnitude.
+            current_turn = state.get("turn", 0)
+            if deadline is not None and isinstance(current_turn, (int, float)):
+                by_turn = current_turn > deadline
+                by_date = today_ord > deadline_ord
+                if by_turn != by_date:
+                    warnings.append(
+                        f"open_thread '{thread.get('text', '')[:40]}...' has "
+                        f"deadline_turn and deadline_date DISAGREEING about whether "
+                        f"it has lapsed (turn says {'lapsed' if by_turn else 'live'}, "
+                        f"date says {'lapsed' if by_date else 'live'}). The date is "
+                        f"authoritative; deadline_turn={deadline} has drifted and "
+                        f"should be re-pegged or dropped."
+                    )
+        elif thread.get("active") and deadline is not None:
+            # No usable date: fall back to the turn proxy, as before, so
+            # saves written before deadline_date existed keep their check.
             current_turn = state.get("turn", 0)
             if isinstance(current_turn, (int, float)) and current_turn > deadline:
                 warnings.append(
                     f"open_thread '{thread.get('text', '')[:40]}...' has a lapsed active deadline "
-                    f"(deadline_turn={deadline}, current turn={current_turn})"
+                    f"(deadline_turn={deadline}, current turn={current_turn}) "
+                    f"-- turn-based, and turns are not days; prefer deadline_date"
                 )
 
     # npc_id registry consistency, if a registry file exists.

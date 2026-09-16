@@ -40,5 +40,6 @@ eldara/saves/exports/*.md
 # per-machine and per-moment: a recorded rate-limit reading, a one-shot
 # override, and a local off switch. The hook itself IS tracked.
 .claude/rate_limit_status.json
+.claude/rate_limit_history.json
 .claude/ALLOW_EXPENSIVE_RUN
 .claude/BLOCK_EXPENSIVE_RUNS

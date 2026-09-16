@@ -197,14 +197,24 @@ lowercase-hyphenated and never reused for a different person:
 ]
 ```
 
-A deadline someone actually accepted. `deadline_turn` must be strictly
-greater than `added_turn` — equal is rejected:
+A deadline someone actually accepted. Record it in the unit the fiction
+used. When a character names a DATE ("by the sixteenth", "before the
+month turns"), that date goes in `deadline_date` — turns and in-world
+days advance at different and variable rates, so a turn number is only
+ever an approximation of a date, and it drifts as turns accumulate:
 
 ```json
 "open_threads": [
-  {"text": "Pay the example innkeeper for the room", "added_turn": 4, "active": true, "deadline_turn": 7}
+  {"text": "Pay the example innkeeper for the room by the sixteenth", "added_turn": 4,
+   "active": true, "deadline_date": {"day": 16, "month": "Seedmonth", "year": 1}}
 ]
 ```
+
+`deadline_turn` remains correct for a window genuinely counted in turns
+rather than days, and must still be strictly greater than `added_turn` —
+equal is rejected. Where both are present the date governs, and
+`validate_state.py` warns if the two disagree about whether the thread
+has lapsed.
 
 ### Inventory & validation
 

@@ -303,6 +303,50 @@ def pass2_adversarial(tmp_dir):
     ok = "lapsed active deadline" in out5.lower() or "warning" in out5.lower()
     results.append(("validate_state.py warns on a lapsed active deadline", ok, out5))
 
+    # A deadline the fiction dated must be judged by the DATE, not by the
+    # turn count. Both halves are checked, because the old turn-only code
+    # got each one backwards in a different direction: it would warn about
+    # a thread whose in-world date is still days away (turn count high),
+    # and stay silent on one whose date has passed (turn count low).
+    far = json.loads(json.dumps(base))
+    far["turn"] = 400
+    far["in_world_date"] = {"day": 13, "month": "Seedmonth", "year": 1}
+    far["open_threads"] = [{"text": "be there on the sixteenth", "added_turn": 1,
+                            "active": True,
+                            "deadline_date": {"day": 16, "month": "Seedmonth", "year": 1}}]
+    far_path = tmp_dir / "date_still_live.json"
+    far_path.write_text(json.dumps(far), encoding="utf-8")
+    _, out_far = run_script(["scripts/validate_state.py", str(far_path)])
+    quiet = "lapsed active deadline" not in out_far.lower()
+
+    past = json.loads(json.dumps(base))
+    past["turn"] = 2
+    past["in_world_date"] = {"day": 20, "month": "Seedmonth", "year": 1}
+    past["open_threads"] = [{"text": "be there on the sixteenth", "added_turn": 1,
+                             "active": True,
+                             "deadline_date": {"day": 16, "month": "Seedmonth", "year": 1}}]
+    past_path = tmp_dir / "date_lapsed.json"
+    past_path.write_text(json.dumps(past), encoding="utf-8")
+    _, out_past = run_script(["scripts/validate_state.py", str(past_path)])
+    loud = "lapsed active deadline" in out_past.lower()
+
+    results.append(("validate_state.py judges a dated deadline by the date, "
+                    "not the turn count", quiet and loud, out_far + out_past))
+
+    # The two units disagreeing is the drift becoming visible, and is the
+    # only signal that an existing deadline_turn has gone stale.
+    dis = json.loads(json.dumps(base))
+    dis["turn"] = 30
+    dis["in_world_date"] = {"day": 13, "month": "Seedmonth", "year": 1}
+    dis["open_threads"] = [{"text": "salt carter", "added_turn": 1, "active": True,
+                            "deadline_turn": 20,
+                            "deadline_date": {"day": 16, "month": "Seedmonth", "year": 1}}]
+    dis_path = tmp_dir / "deadline_units_disagree.json"
+    dis_path.write_text(json.dumps(dis), encoding="utf-8")
+    _, out_dis = run_script(["scripts/validate_state.py", str(dis_path)])
+    results.append(("validate_state.py warns when deadline_turn and "
+                    "deadline_date disagree", "disagree" in out_dis.lower(), out_dis))
+
     # prune_advisor.py must run without crashing and must print the
     #    "confirm or override" caveat -- we do NOT assert its ranking
     #    quality here, since it's a known-naive heuristic; this only

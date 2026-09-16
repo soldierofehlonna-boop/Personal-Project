@@ -32,8 +32,13 @@ a memory aid with teeth, not an oracle.
 
 RECORDING A CHECK
 -----------------
-    python3 .claude/hooks/tier34_guard.py --record allowed
-    python3 .claude/hooks/tier34_guard.py --record allowed_warning
+    python3 .claude/hooks/tier34_guard.py --record <status> <window> <resetsAt>
+    python3 .claude/hooks/tier34_guard.py --record allowed_warning seven_day 1789959600
+
+Pass all three. rate_limit_info reports only the window currently
+BINDING, so the window name is part of the reading, not decoration -- the
+same "allowed_warning" means a four-hour wait on five_hour and a
+four-day wait on seven_day.
 
 Only ever record what `get_session` actually returned in
 external_metadata.rate_limit_info.status.
@@ -58,6 +63,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent.parent
 CLAUDE_DIR = REPO / ".claude"
 STATUS_FILE = CLAUDE_DIR / "rate_limit_status.json"
+HISTORY_FILE = CLAUDE_DIR / "rate_limit_history.json"
 KILL_SWITCH = CLAUDE_DIR / "BLOCK_EXPENSIVE_RUNS"
 BYPASS = CLAUDE_DIR / "ALLOW_EXPENSIVE_RUN"
 
@@ -89,16 +95,46 @@ def allow():
     sys.exit(0)
 
 
-def record(status):
+def record(status, window=None, resets_at=None):
+    """Record one observation, and append it to a per-window history.
+
+    rate_limit_info reports only the ONE window currently binding -- it
+    read five_hour this morning and seven_day once that window reset. So
+    a single snapshot can never show both. The history keeps the last
+    observation of EACH window, which is the only way to answer "what is
+    the weekly position" while the five-hour window happens to be the one
+    reporting. Entries go stale and are labelled with their age rather
+    than quietly presented as current.
+    """
     CLAUDE_DIR.mkdir(parents=True, exist_ok=True)
-    STATUS_FILE.write_text(json.dumps({
+    now = int(time.time())
+    rec = {
         "status": status,
-        "recorded_at": int(time.time()),
-        "recorded_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "source": "get_session -> external_metadata.rate_limit_info.status",
-    }, indent=2), encoding="utf-8")
-    print(f"recorded rate-limit status {status!r} at "
-          f"{time.strftime('%H:%M:%SZ', time.gmtime())}")
+        "window": window,
+        "resets_at": int(resets_at) if resets_at else None,
+        "recorded_at": now,
+        "recorded_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+        "source": "get_session -> external_metadata.rate_limit_info",
+    }
+    STATUS_FILE.write_text(json.dumps(rec, indent=2), encoding="utf-8")
+
+    hist = {}
+    if HISTORY_FILE.exists():
+        try:
+            hist = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            hist = {}
+    if window:
+        hist[window] = rec
+        HISTORY_FILE.write_text(json.dumps(hist, indent=2), encoding="utf-8")
+
+    where = f" [{window}]" if window else ""
+    when = ""
+    if resets_at:
+        left = int(resets_at) - now
+        when = f", resets in {left // 3600}h {(left % 3600) // 60}m"
+    print(f"recorded {status!r}{where}{when} at "
+          f"{time.strftime('%H:%M:%SZ', time.gmtime(now))}")
 
 
 def running_tier34():
@@ -129,9 +165,12 @@ def running_tier34():
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--record":
         if len(sys.argv) < 3:
-            print("usage: tier34_guard.py --record <status>", file=sys.stderr)
+            print("usage: tier34_guard.py --record <status> [window] [resetsAt]",
+                  file=sys.stderr)
             sys.exit(1)
-        record(sys.argv[2])
+        record(sys.argv[2],
+               sys.argv[3] if len(sys.argv) > 3 else None,
+               sys.argv[4] if len(sys.argv) > 4 else None)
         return
 
     try:

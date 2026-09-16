@@ -3,7 +3,13 @@
   "title": "Eldara Campaign State",
   "description": "Schema for saves/current.json. This is the single source of truth for Chad's state. validate_state.py checks saved state against this schema plus the extra closed-inventory / non-negative-currency rules documented in prompts/GM_INSTRUCTIONS.md.",
   "type": "object",
-  "required": ["schema_version", "turn", "in_world_date", "gear", "currency"],
+  "required": [
+    "schema_version",
+    "turn",
+    "in_world_date",
+    "gear",
+    "currency"
+  ],
   "properties": {
     "schema_version": {
       "type": "integer",
@@ -19,7 +25,11 @@
     },
     "in_world_date": {
       "type": "object",
-      "required": ["day", "month", "year"],
+      "required": [
+        "day",
+        "month",
+        "year"
+      ],
       "properties": {
         "day": {
           "type": "integer",
@@ -30,33 +40,61 @@
         "month": {
           "type": "string",
           "enum": [
-            "Frostwane", "Thawmoon", "Seedmonth", "Greenrise", "Sunheight",
-            "Highsummer", "Goldleaf", "Harvestide", "Mistfall", "Darkening",
-            "Longnight", "Deepwinter", "The Turning"
+            "Frostwane",
+            "Thawmoon",
+            "Seedmonth",
+            "Greenrise",
+            "Sunheight",
+            "Highsummer",
+            "Goldleaf",
+            "Harvestide",
+            "Mistfall",
+            "Darkening",
+            "Longnight",
+            "Deepwinter",
+            "The Turning"
           ]
         },
-        "year": { "type": "integer", "minimum": 1 }
+        "year": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "status": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Injuries, conditions, ongoing effects. Include ordinary age-related recovery notes here when they're actually established on-screen (e.g. 'ankle still stiff, slower to loosen than it used to be') -- these are real status entries like any injury, not separate lore, and clear the same way any other status does once narration resolves them."
     },
     "magic": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Tracks magic-touched conditions or effects actually affecting Chad on-screen (e.g. an enchanted item's effect, a healer's working still in progress) -- not a skill list, since Chad has no magical talent or training of his own."
     },
     "gear": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "properties": {
-          "name": { "type": "string" },
-          "acquired_turn": { "type": ["integer", "null"] },
-          "acquired_event": { "type": "string" },
+          "name": {
+            "type": "string"
+          },
+          "acquired_turn": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "acquired_event": {
+            "type": "string"
+          },
           "condition": {
             "type": "string",
             "description": "Ordinary narrated wear on an existing item (e.g. 'soles worn thin'). An edit to an existing entry, never a reason to add a duplicate or silently drop it."
@@ -71,17 +109,33 @@
     "currency": {
       "type": "object",
       "properties": {
-        "copper": { "type": "integer", "minimum": 0 },
-        "silver": { "type": "integer", "minimum": 0 },
-        "gold": { "type": "integer", "minimum": 0 },
-        "platinum": { "type": "integer", "minimum": 0 }
+        "copper": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "silver": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gold": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "platinum": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "language": {
       "type": "object",
       "properties": {
-        "established": { "type": "boolean" },
-        "detail": { "type": "string" }
+        "established": {
+          "type": "boolean"
+        },
+        "detail": {
+          "type": "string"
+        }
       }
     },
     "entities": {
@@ -96,7 +150,10 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["npc_id", "name"],
+        "required": [
+          "npc_id",
+          "name"
+        ],
         "properties": {
           "npc_id": {
             "type": "string",
@@ -106,8 +163,12 @@
             "type": "string",
             "description": "Current display name/title. Free to evolve over the campaign -- npc_id is the identity key, not this."
           },
-          "disposition": { "type": "string" },
-          "note": { "type": "string" },
+          "disposition": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
           "is_new_npc": {
             "type": "boolean",
             "description": "Required only on an entry whose npc_id wasn't present in the previously-committed npc_relationships array (a genuinely new introduction, or a previously-pruned NPC reappearing). validate_state.py checks the claim against saves/npc_registry.json: true is rejected if that id is already registered, false is rejected if it isn't. Not needed on an entry just being updated in place."
@@ -121,17 +182,47 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["text", "added_turn"],
+        "required": [
+          "text",
+          "added_turn"
+        ],
         "properties": {
-          "text": { "type": "string" },
-          "added_turn": { "type": "integer", "minimum": 0 },
+          "text": {
+            "type": "string"
+          },
+          "added_turn": {
+            "type": "integer",
+            "minimum": 0
+          },
           "active": {
             "type": "boolean",
             "description": "True marks a thread with a live, time-pressured obligation -- normally paired with deadline_turn. Not a duplicate of 'still open': a resolved thread is removed from this array entirely, never just marked inactive."
           },
           "deadline_turn": {
             "type": "integer",
-            "description": "The turn after which this thread's window closes -- set only when the story itself established a concrete timeframe on-screen (an NPC names a date, a caravan leaves in three days). Must be strictly after added_turn. Most threads should have none at all."
+            "description": "DEPRECATED for expressing a dated obligation -- use deadline_date when the story named a date. Still valid for a window genuinely measured in turns, and still honoured for saves predating deadline_date. Must be strictly after added_turn. Where both are present, deadline_date governs the lapse check and a disagreement between them is warned about."
+          },
+          "deadline_date": {
+            "type": "object",
+            "description": "The in-world date this thread's window closes -- the SAME unit the fiction states it in (\"by the 16th of Seedmonth\", \"by the week's end\"). Prefer this over deadline_turn whenever the story named a date. Turns and days advance at different, variable rates -- measured at 1.09 days/turn in the seeding fixture and 0.00-0.17 in real play -- so a turn number can only ever approximate a date, and the approximation drifts as turns accumulate. Same separation Inform 7 makes: events are scheduled at a time and fire on the first turn at or after it.",
+            "properties": {
+              "day": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "month": {
+                "type": "string"
+              },
+              "year": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "day",
+              "month",
+              "year"
+            ]
           }
         }
       },
@@ -140,17 +231,23 @@
     },
     "continuity_notes": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "maxItems": 5,
       "description": "Soft cap of 5. Short log of corrections actually made (drift fix, audit result, resolved discrepancy)."
     },
     "throughline": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "maxItems": 6,
       "description": "Soft cap of 6. How Chad is changing internally, not what happened to him. Add sparingly, at real turning points."
     },
-    "scene": { "type": "string" },
+    "scene": {
+      "type": "string"
+    },
     "current_location": {
       "type": "string",
       "description": "A location id from saves/locations.json (e.g. 'hollow_creek'), if Chad's current position corresponds to one of the fixed places tracked there. Optional and freeform-compatible: leave unset while Chad is somewhere not yet worth tracking as a fixed point (open wilderness, an unnamed camp). This is a narrative continuity aid, not a coordinate system with movement math -- validate_state.py only checks that the id, if set, actually exists in locations.json."
@@ -163,29 +260,56 @@
           "type": "string",
           "description": "A location id from saves/locations.json that Chad is currently traveling toward."
         },
-        "departed_turn": { "type": "integer", "minimum": 0 },
+        "departed_turn": {
+          "type": "integer",
+          "minimum": 0
+        },
         "departed_date": {
           "type": "object",
           "description": "in_world_date at the moment of departure, same shape as the top-level in_world_date field.",
           "properties": {
-            "day": { "type": "integer", "minimum": 1, "maximum": 35 },
-            "month": { "type": "string" },
-            "year": { "type": "integer", "minimum": 1 }
+            "day": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 35
+            },
+            "month": {
+              "type": "string"
+            },
+            "year": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
         },
         "eta_date": {
           "type": "object",
           "description": "Expected arrival in_world_date, consistent with the departure date plus the route's known min/max duration in locations.json. Narration is free to have things go wrong en route (delay, detour) -- if that happens, update this field to match rather than letting the narrated arrival silently disagree with it.",
           "properties": {
-            "day": { "type": "integer", "minimum": 1, "maximum": 35 },
-            "month": { "type": "string" },
-            "year": { "type": "integer", "minimum": 1 }
+            "day": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 35
+            },
+            "month": {
+              "type": "string"
+            },
+            "year": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
         }
       }
     },
-    "handoff_summary": { "type": "string" },
-    "arc_title": { "type": "string" },
-    "chapter_title": { "type": "string" }
+    "handoff_summary": {
+      "type": "string"
+    },
+    "arc_title": {
+      "type": "string"
+    },
+    "chapter_title": {
+      "type": "string"
+    }
   }
 }
