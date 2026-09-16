@@ -191,12 +191,43 @@
     },
     {
       "id": "no-write-path-for-pinned-facts",
-      "status": "open",
+      "status": "fixed",
       "owner": "agent",
       "summary": "saves/pinned_facts.json and saves/locations.json are READ by the tooling (lore_consistency_check.py, validate_state.py, location_lookup.py) but no script writes either. There is no supported way to add a pinned fact.",
       "evidence": "Blind GMs raised this independently at least four times across runs and stopped each time: 'I tried to add Maren's no-credit terms to saves/pinned_facts.json -- exactly the kind of short load-bearing fact that should be hard-checked every turn rather than only surfacing on keyword match... The write needs your approval.' A later turn: 'That edit wasn't approved last time.' One GM also correctly DECLINED to pin a date, reasoning no regex would catch drift on it honestly -- so the judgement is sound and only the mechanism is missing.",
       "found_by": "tier-0 mining of GM-raised deferred work in run transcripts",
-      "candidates": []
+      "candidates": [
+        {
+          "name": "pin_fact.py that validates before writing",
+          "tier": 1,
+          "effectiveness": 5,
+          "churn": 1,
+          "why": "The job is not writing JSON, it is refusing to write a fact that kills the checker. Compiles the pattern, requires it to match a supplied example, bounds its runtime against a pathological input, and tests it against real GM prose from the run transcripts to surface false positives before the entry lands."
+        },
+        {
+          "name": "harden lore_consistency_check against bad entries",
+          "tier": 1,
+          "effectiveness": 3,
+          "churn": 0,
+          "why": "Stops the silent death for entries that arrive another way (hand-edited, older file), but on its own provides no write path, so the GMs stay blocked. Cheap, and complements the writer rather than competing."
+        },
+        {
+          "name": "writer with no validation",
+          "tier": 1,
+          "effectiveness": 2,
+          "churn": 1,
+          "why": "Actively worse than no writer: it makes it easy to add the exact entry that disables the advisory."
+        },
+        {
+          "name": "document the JSON shape, no script",
+          "tier": 0,
+          "effectiveness": 1,
+          "churn": 0,
+          "why": "Still requires hand-editing a file the project otherwise forbids hand-editing, and is the 'instructions nobody follows' failure already corrected once."
+        }
+      ],
+      "research": "The hazard is not writing JSON, it is what a bad entry does. lore_consistency_check.py line ~149 does fact['contradiction_patterns'] (KeyError if absent) and re.search(pattern, ...) unguarded (re.error on a malformed pattern). commit_state.run_lore_check() swallows failures by design, so a bad pinned fact makes the whole lore advisory silently dead -- it appears to run and find nothing. Practice for user-supplied regex is to validate the pattern, bound its runtime, or use a linear engine; nested quantifiers over overlapping classes ((a+)+, (\\w+\\s*)+) are the catastrophic-backtracking shape.",
+      "fixed_by": "scripts/pin_fact.py (--add/--list/--remove) which vets a pattern before writing: compiles, must match its contradiction example, must not match the fact's own wording, bounded against backtracking probes, and tested against real GM prose from saves/exports/. Plus lore_consistency_check.py hardened to skip a malformed entry rather than die. locations.json still has no writer -- narrower, and no run has been blocked on it twice."
     }
   ]
 }

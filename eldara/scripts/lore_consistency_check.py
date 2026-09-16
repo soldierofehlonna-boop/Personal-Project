@@ -146,13 +146,34 @@ def check_pinned_facts(text, pinned_facts):
     notices = []
     normalized = text
     for fact in pinned_facts:
-        for pattern in fact["contradiction_patterns"]:
-            m = re.search(pattern, normalized, re.IGNORECASE | re.DOTALL)
+        if not isinstance(fact, dict):
+            continue
+        # A malformed entry must degrade to skipping THAT entry, never to
+        # taking the pass down. This reached fact["contradiction_patterns"]
+        # directly and called re.search() unguarded, so a missing key raised
+        # KeyError and a bad pattern raised re.error -- and
+        # commit_state.run_lore_check() swallows failures by design, since an
+        # advisory must never block a commit. One bad pinned fact therefore
+        # silenced the entire lore pass while it still looked like it ran and
+        # found nothing. scripts/pin_fact.py refuses to write such an entry,
+        # but entries can also arrive by hand-editing or from an older file,
+        # so the reader stays defensive too.
+        for pattern in (fact.get("contradiction_patterns") or []):
+            try:
+                m = re.search(pattern, normalized, re.IGNORECASE | re.DOTALL)
+            except (re.error, TypeError) as e:
+                notices.append(
+                    f"pinned fact {fact.get('name')!r} has an unusable "
+                    f"contradiction pattern ({e}); it checked NOTHING this turn. "
+                    f"Fix it with scripts/pin_fact.py or remove it -- a broken "
+                    f"pattern is worse than none, because the file still looks "
+                    f"like protection.")
+                continue
             if m:
                 notices.append(
                     f"possible contradiction: narration appears to show "
-                    f"{fact['name']} acting, but established fact is "
-                    f"'{fact['established_fact']}' -- context: "
+                    f"{fact.get('name')} acting, but established fact is "
+                    f"'{fact.get('established_fact')}' -- context: "
                     f"\"...{m.group(0)[:80]}...\""
                 )
     return notices

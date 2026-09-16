@@ -560,6 +560,64 @@ def pass2_adversarial(tmp_dir):
     results.append(("commit_state.py archives continuity notes evicted at the "
                     "soft cap", evict_ok, evict_out))
 
+    # pin_fact.py must refuse the entries that would disable the checker,
+    # and lore_consistency_check.py must survive one that got in anyway
+    # (hand-edited file, older save). The pair matters: the writer guards
+    # the door, the reader degrades per-entry instead of dying, and
+    # commit_state.run_lore_check() swallows failures, so without both a
+    # single bad fact silences the lore pass while looking like it ran.
+    pin_ok = False
+    pin_out = ""
+    try:
+        import importlib
+        pf = importlib.import_module("pin_fact")
+        orig_corpus = pf.real_prose
+        pf.real_prose = lambda: ["Maren counted the coin and said nothing at all."]
+        try:
+            uncompilable = pf.vet("[unclosed", "x", "y")
+            never_fires = pf.vet(r"\bzzzz\b", "Maren lets him stay free.", "y")
+            redos = pf.vet(r"(a+)+!", "aaa!", "y")
+            false_pos = pf.vet(r"\bMaren\b", "Maren lets him stay free.", "y")
+            good = pf.vet(r"\bMaren lets him stay free\b",
+                          "Maren lets him stay free for the night.",
+                          "Maren will not extend credit.")
+            pin_ok = (any("does not compile" in x for x in uncompilable)
+                      and any("does not match the contradiction" in x for x in never_fires)
+                      and any("backtracking" in x for x in redos)
+                      and any("real GM prose" in x for x in false_pos)
+                      and good == [])
+            pin_out = f"uncompilable={len(uncompilable)} redos={len(redos)} good={len(good)}"
+        finally:
+            pf.real_prose = orig_corpus
+    except Exception as e:                       # noqa: BLE001
+        pin_out = f"raised {e!r}"
+    results.append(("pin_fact.py refuses a pattern that cannot compile, cannot "
+                    "fire, backtracks catastrophically, or hits real prose",
+                    pin_ok, pin_out))
+
+    lore_ok = False
+    lore_out = ""
+    try:
+        lc = importlib.import_module("lore_consistency_check")
+        txt = "He checks his phone in the dark."
+        broken = lc.check_pinned_facts(txt, [
+            {"name": "broken", "established_fact": "y",
+             "contradiction_patterns": ["[unclosed"]},
+            {"name": "good", "established_fact": "y",
+             "contradiction_patterns": [r"\bchecks? his phone\b"]}])
+        missing_key = lc.check_pinned_facts(txt, [{"name": "x", "established_fact": "y"}])
+        not_a_dict = lc.check_pinned_facts(txt, ["garbage"])
+        # the broken entry is reported AND the good one still fires
+        lore_ok = (len(broken) == 2
+                   and any("unusable" in n for n in broken)
+                   and missing_key == [] and not_a_dict == [])
+        lore_out = "; ".join(n[:60] for n in broken)
+    except Exception as e:                       # noqa: BLE001
+        lore_out = f"raised {e!r}"
+    results.append(("lore_consistency_check.py skips a malformed pinned fact "
+                    "instead of dying, and still checks the good ones",
+                    lore_ok, lore_out))
+
     # prune_advisor.py must run without crashing and must print the
     #    "confirm or override" caveat -- we do NOT assert its ranking
     #    quality here, since it's a known-naive heuristic; this only
