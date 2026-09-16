@@ -214,7 +214,10 @@ def build_turns(base_state):
 
     # Turn 10: continuity_notes has at least one entry
     state["turn"] = 10
-    state["continuity_notes"] = ["Corrected day count after a skipped in-world date on turn 7"]
+    state["continuity_notes"] = [
+        "Turn 7 covers two in-world days rather than one; recorded so the day "
+        "count reconciles against the turn count"
+    ]
     turns.append((
         copy.deepcopy(state),
         "(No new narration this turn -- correcting a dropped day in the "
@@ -245,6 +248,36 @@ def build_turns(base_state):
     return turns
 
 
+def advance_dates(turns):
+    """Give each turn its own in-world day.
+
+    Turn numbers alone used to be the only thing that moved: in_world_date
+    stayed at day 1 of Seedmonth across all eleven turns, because nothing
+    here ever set it. That is fine for Pass 1, which checks none of the
+    date machinery -- and it was found twice by blind GM sessions reading
+    the seeded save, both of which flagged a campaign where eleven turns
+    had elapsed and no in-world time had, one of them noting there was
+    therefore no "last week" for anything to have happened in.
+
+    This fixture now does double duty: it earns Pass 1 coverage AND seeds
+    scripts/run_stress_prompts.py --seed. Coverage only needs the state to
+    be valid; a GM reading it needs it to be coherent, and a static
+    calendar is not.
+
+    Turn 7 deliberately advances two days rather than one, so the
+    continuity_notes entry above describes a real gap in this campaign
+    instead of asserting a correction that never happened. Everything
+    stays inside Seedmonth (30 days), so no month rollover is involved
+    and validate_state.py's day-bound and month-name checks are exercised
+    without being stressed.
+    """
+    for state, *_rest in turns:
+        turn = state.get("turn", 0)
+        day = 1 + turn + (1 if turn >= 7 else 0)
+        state["in_world_date"] = {"day": day, "month": "Seedmonth", "year": 1}
+    return turns
+
+
 def play_turns(dry_run):
     state = load_current()
     if state.get("turn", 0) != 0:
@@ -254,7 +287,7 @@ def play_turns(dry_run):
               "really is meant to be a test run.")
         return 1
 
-    turns = build_turns(state)
+    turns = advance_dates(build_turns(state))
 
     print(f"Planned: {len(turns)} real turns, each committed through the actual "
           "commit_state.py pipeline (schema validation + self_critique gate + git commit).\n")
