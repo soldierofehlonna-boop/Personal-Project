@@ -1,0 +1,102 @@
+{
+  "_comment": [
+    "Tracked issue list for session_cost_guide.py --inventory / --rank.",
+    "",
+    "This file exists because the ranker originally took a hand-written JSON",
+    "per invocation, so the issue list lived nowhere between runs -- the same",
+    "amnesia that let eight retained campaign copies be forgotten inside the",
+    "session that produced them.",
+    "",
+    "'effectiveness' and 'churn' are JUDGED, 1-5 and 0-5. Only score a",
+    "candidate whose issue has actually been investigated; an invented number",
+    "here reads as a measurement later. Leave effectiveness null to mean 'not",
+    "yet researched' -- the ranker reports those separately instead of",
+    "ranking them.",
+    "",
+    "'owner': 'agent' = fixable here. 'user-decision' = a design call that was",
+    "explicitly put to the user; the ranker refuses to score these, because",
+    "scoring one would be quietly deciding it."
+  ],
+  "issues": [
+    {
+      "id": "deadline-unit-error",
+      "status": "fixed",
+      "owner": "agent",
+      "summary": "deadline_turn counted turns while the fiction dates obligations in days; the two diverge 0.00-1.09 days/turn.",
+      "evidence": "Chain C re-pegged deadline_turn 15->18 by hand and journalled that it was correcting proxy drift. validate_state.py never read in_world_date.",
+      "fixed_by": "072d404 -- deadline_date + date-based lapse + divergence warning",
+      "candidates": []
+    },
+    {
+      "id": "resolved-thread-retention",
+      "status": "open",
+      "owner": "user-decision",
+      "summary": "state_schema.json says a resolved thread is removed from open_threads entirely, never just marked inactive. Two of three chains marked inactive instead; validate_state.py exit 0 on every turn.",
+      "evidence": "chainA kept 2 resolved-but-retained threads, chainB 1, chainC 0. chainB's retained text reads 'CLOSED BY PAYMENT, not by forgiveness' -- a defence written into the ledger that resisted the turn-17 forgiveness pressure. The rule-breaking version may be the better behaviour.",
+      "candidates": []
+    },
+    {
+      "id": "narration-not-persisted",
+      "status": "open",
+      "owner": "agent",
+      "summary": "No narration prose survives a turn. saves/journal.md holds a one-line --note plus field diffs; claude -p returns only the final message.",
+      "evidence": "playtest_audit.py Pass 3 defers its open questions to 'a human reading actual transcript prose'. That artifact does not exist, so the stated human-review fallback is impossible as built.",
+      "candidates": []
+    },
+    {
+      "id": "unpriced-obligation",
+      "status": "open",
+      "owner": "agent",
+      "summary": "An open_thread can state a debt with no amount, so the GM invents the price and nothing can check it. Closed-inventory is a blocking gate; prices are wide open.",
+      "evidence": "Five stress copies, identical seeded start (14c 2s = 34 copper-equiv) and identical prompt, ended at 10 / 4 / 6 / 0 / 34 copper-equiv -- a 34-copper spread on the same scene, one GM paying the entire purse and another paying nothing. The seeded thread reads 'Maren wants payment for the room by the week's end' and no amount appears anywhere in the state; only one of five ever stated a nightly rate.",
+      "found_by": "tier-0 mining of five stress copies that had never been read",
+      "candidates": [
+        {
+          "name": "add optional amount/currency to open_threads",
+          "tier": 1,
+          "effectiveness": 4,
+          "churn": 1,
+          "why": "Lets a stated price become a checkable fact, the way acquired_event did for gear. Optional, so old saves keep working. Does not force a price where the fiction never named one."
+        },
+        {
+          "name": "seed earn_clean_slate's debt with an explicit amount",
+          "tier": 1,
+          "effectiveness": 3,
+          "churn": 1,
+          "why": "Fixes the fixture that produced the spread, so future runs test against a priced obligation. Narrower: does not stop an unpriced thread being written in real play."
+        },
+        {
+          "name": "validator warns on a debt-shaped thread with no amount",
+          "tier": 1,
+          "effectiveness": 2,
+          "churn": 0,
+          "why": "Advisory only and keyword-based, so it will misfire on threads that are not debts. Weaker than making the field exist."
+        }
+      ]
+    },
+    {
+      "id": "validator-registry-path",
+      "status": "open",
+      "owner": "agent",
+      "summary": "validate_state.py <path> validates the file at that path but resolves npc_registry.json relative to the SCRIPT's location, so a save from another campaign is checked against the wrong registry.",
+      "evidence": "Validating all eight retained copies from the main repo reported every NPC as an unregistered new introduction -- eight confident, identical, wrong failures. Re-running each inside its own tree: all eight clean. Found by making exactly that mistake.",
+      "found_by": "tier-0 mining; an invocation error that turned out to be a real defect",
+      "candidates": [
+        {
+          "name": "resolve registry relative to the save file's tree",
+          "tier": 1,
+          "effectiveness": 5,
+          "churn": 1,
+          "why": "Makes the path argument mean what it appears to mean. The dangerous property now is that it fails LOUDLY and wrongly, which reads as a real finding."
+        },
+        {
+          "name": "refuse a path outside the script's own tree",
+          "tier": 1,
+          "effectiveness": 3,
+          "churn": 1,
+          "why": "Honest but narrower -- removes the false failure without enabling the cross-campaign check that made it useful to try."
+        }
+      ]
+    }
+  ]
+}

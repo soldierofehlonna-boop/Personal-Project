@@ -52,6 +52,7 @@ ROOT = Path(__file__).resolve().parent.parent
 EXPORTS = ROOT / "saves" / "exports"
 REPO = ROOT.parent
 HISTORY_FILE = REPO / ".claude" / "rate_limit_history.json"
+ISSUES_FILE = ROOT / "docs" / "open_issues.json"
 
 # Draw weight per tier. Not a token count -- a count of nested `claude -p`
 # sessions, which is the quantity that actually moves the rate limit.
@@ -130,6 +131,46 @@ def budget():
     return rows, worst
 
 
+def load_issues(path=None):
+    p = Path(path) if path else ISSUES_FILE
+    if not p.exists():
+        return []
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return d.get("issues", d) if isinstance(d, dict) else d
+
+
+def inventory(issues):
+    """Open issues, with what is known and what is deliberately not scored.
+
+    Deliberately NOT a ranking. An issue whose candidates carry no
+    effectiveness score has not been researched, and inventing one here
+    would read as a measurement the next time anyone looks.
+    """
+    open_ = [i for i in issues if i.get("status") != "fixed"]
+    fixed = [i for i in issues if i.get("status") == "fixed"]
+    print(f"\nOPEN ISSUES ({len(open_)} open, {len(fixed)} fixed):")
+    if not open_ and not fixed:
+        print("  (none tracked -- see docs/open_issues.json)")
+    for i in open_:
+        owner = i.get("owner", "?")
+        mark = "[YOURS]" if owner == "user-decision" else "[agent]"
+        cands = i.get("candidates") or []
+        scored = [c for c in cands if c.get("effectiveness") is not None]
+        state = (f"{len(scored)}/{len(cands)} candidate(s) scored" if cands
+                 else "no candidates yet -- not researched")
+        print(f"\n  {mark} {i.get('id')}")
+        print(f"     {i.get('summary','')[:100]}")
+        print(f"     {state}")
+        if owner == "user-decision":
+            print("     not scored on purpose: this was put to the user as a design call")
+    for i in fixed:
+        print(f"\n  [done ] {i.get('id')}  ({i.get('fixed_by','')})")
+    return open_
+
+
 def rank_fixes(path, rows, worst):
     """Rank candidate fixes by effectiveness against draw.
 
@@ -137,8 +178,31 @@ def rank_fixes(path, rows, worst):
     Effectiveness is a JUDGED input -- the script prints it as given and
     labels it judged. Draw is measured.
     """
-    with open(path, encoding="utf-8") as fh:
-        cands = json.load(fh)
+    if path and path != "-":
+        with open(path, encoding="utf-8") as fh:
+            cands = json.load(fh)
+    else:
+        cands, skipped = [], []
+        for i in load_issues():
+            if i.get("status") == "fixed":
+                continue
+            if i.get("owner") == "user-decision":
+                skipped.append(i.get("id"))
+                continue
+            for c in (i.get("candidates") or []):
+                if c.get("effectiveness") is None:
+                    skipped.append(f"{i.get('id')}/{c.get('name')} (unscored)")
+                    continue
+                c = dict(c, name=f"{i.get('id')}: {c.get('name')}")
+                cands.append(c)
+        if skipped:
+            print("\n  NOT RANKED, on purpose:")
+            for s in skipped:
+                print(f"    - {s}")
+        if not cands:
+            print("\n  Nothing rankable yet. Research an issue and add scored")
+            print("  candidates to docs/open_issues.json first.")
+            return []
 
     blocked = worst is not None and worst != "allowed"
     print(f"\n{'':2}{'CANDIDATE':<34} {'TIER':>4} {'EFFECT':>7} {'DRAW':>6}  VERDICT")
@@ -182,8 +246,11 @@ def rank_fixes(path, rows, worst):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--rank", metavar="FIXES.json",
-                    help="Rank candidate fixes by effectiveness against draw.")
+    ap.add_argument("--rank", metavar="FIXES.json", nargs="?", const="-",
+                    help="Rank candidates by effectiveness against draw. With no "
+                         "argument, reads docs/open_issues.json.")
+    ap.add_argument("--inventory", action="store_true",
+                    help="List tracked open issues without ranking them.")
     args = ap.parse_args()
 
     print("Work available here, cheapest first. "
@@ -225,6 +292,8 @@ def main():
     print("  No remaining-percentage or token budget is exposed to a session;")
     print("  none is estimated here.")
 
+    if args.inventory or args.rank:
+        inventory(load_issues())
     if args.rank:
         rank_fixes(args.rank, rows, worst)
 
