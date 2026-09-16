@@ -75,6 +75,25 @@ from adversarial_stress_test import GM_STRESS_PROMPTS  # noqa: E402
 
 # Appended to each case prompt so there is a state draft to read, phrased
 # the same way --auto-gm phrases it so the three paths stay comparable.
+# A quota stop is not a GM response, and must not be recorded as one. The
+# CLI reports it on stdout with exit 1 and a one-line body ("You've hit
+# your session limit - resets 2:20am (UTC)"), which is short enough to sit
+# in a transcript looking like a terse refusal. Worse, the remaining cases
+# then fail in ~2s each and get recorded as done, so a later resume skips
+# them unless every case is re-run. Detected narrowly -- exit non-zero AND
+# a short body AND one of these phrases -- so real model output is never
+# mistaken for it.
+LIMIT_MARKERS = ("session limit", "usage limit", "rate limit",
+                 "quota", "limit reached")
+
+
+def looks_like_quota_stop(result):
+    if result["exit_code"] == 0:
+        return False
+    body = result["response"].lower()
+    return len(body) < 300 and any(m in body for m in LIMIT_MARKERS)
+
+
 STATE_ASK = (
     "\n\nDraft the resulting proposed state as a complete JSON object "
     "(the full saves/current.json shape, not just a diff) in a ```json "
@@ -330,6 +349,13 @@ def main():
                      args.permission_mode, instructions_path, args.seed)
         state = "ok" if r["exit_code"] == 0 else f"exit {r['exit_code']}"
         print(f"{state}, {r['seconds']}s, {len(r['response'])} chars")
+
+        if looks_like_quota_stop(r):
+            print(f"\n  STOPPING: {r['response'].strip()}")
+            print("  This case and the ones after it were NOT recorded, so "
+                  "re-running this label\n  picks them up. Cases already "
+                  "recorded are kept.")
+            break
 
         # Written after every case, not at the end. Stopping the run now
         # costs the case in flight and nothing else.
