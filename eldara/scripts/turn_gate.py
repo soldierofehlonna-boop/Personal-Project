@@ -74,6 +74,17 @@ def main():
     text = read_turn_text()
     matches = list(MARKER_PATTERN.finditer(text))
 
+    if not text.strip():
+        # An empty pipe produced exactly the same "PASS: no STATE_CHANGE
+        # marker present" as a genuine no-change turn, same exit code. A
+        # caller whose redirection silently delivered nothing got a pass
+        # that looked like a verification.
+        print("FAIL: no turn text was supplied (empty input). The gate cannot "
+              "tell an unchanged turn from a pipe that delivered nothing, so "
+              "it refuses rather than passing. Pipe the turn's text in, or "
+              "pass a file path.")
+        sys.exit(1)
+
     if not matches:
         if BARE_MARKER_PATTERN.search(text):
             print(

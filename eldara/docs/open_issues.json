@@ -228,6 +228,16 @@
       ],
       "research": "The hazard is not writing JSON, it is what a bad entry does. lore_consistency_check.py line ~149 does fact['contradiction_patterns'] (KeyError if absent) and re.search(pattern, ...) unguarded (re.error on a malformed pattern). commit_state.run_lore_check() swallows failures by design, so a bad pinned fact makes the whole lore advisory silently dead -- it appears to run and find nothing. Practice for user-supplied regex is to validate the pattern, bound its runtime, or use a linear engine; nested quantifiers over overlapping classes ((a+)+, (\\w+\\s*)+) are the catastrophic-backtracking shape.",
       "fixed_by": "scripts/pin_fact.py (--add/--list/--remove) which vets a pattern before writing: compiles, must match its contradiction example, must not match the fact's own wording, bounded against backtracking probes, and tested against real GM prose from saves/exports/. Plus lore_consistency_check.py hardened to skip a malformed entry rather than die. locations.json still has no writer -- narrower, and no run has been blocked on it twice."
+    },
+    {
+      "id": "fail-open-gate-path",
+      "status": "fixed",
+      "owner": "agent",
+      "summary": "Three handlers on the commit gate path turned a failure into a pass, or a skipped check into a silent one.",
+      "evidence": "(1) A corrupt npc_registry.json was read as {} and WRITTEN BACK: a registry of maren/ket/osgood plus one new introduction became {newcomer}, three names erased, commit reported 'Commit complete.' (2) Corrupting locations.json turned a real FAIL ('current_location is not in locations.json') into a PASS, silently. (3) turn_gate.py on empty stdin printed the same PASS and exit 0 as a genuine no-change turn, so a pipe that delivered nothing looked like a verification.",
+      "found_by": "targeted fail-open audit of the five gate-path scripts, prompted by four defects of the same class found earlier the same day",
+      "fixed_by": "registry: refuse the commit rather than rewrite from {}; locations: warn that the check was skipped, matching the jsonschema convention already in that file; turn_gate: empty input fails. Also: a lore pass that cannot run now says so instead of printing nothing.",
+      "candidates": []
     }
   ]
 }

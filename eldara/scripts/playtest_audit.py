@@ -650,6 +650,58 @@ def pass2_adversarial(tmp_dir):
                     "and prices nested tiers from measured runs",
                     guide_ok, guide_out))
 
+    # THE FAIL-OPEN SET. Each of these turned a refusal into a pass, or a
+    # skipped check into a silent one. They are grouped because they are one
+    # defect class, found by asking every handler on the gate path a single
+    # question: when this fails or gets nothing, does the turn get EASIER?
+    fo = []
+
+    # A corrupt npc_registry.json must never be rewritten from {}. It used to
+    # be: a registry of three names plus one new introduction was written back
+    # as one name, and the commit said "Commit complete."
+    reg = tmp_dir / "regprobe"
+    (reg / "saves").mkdir(parents=True, exist_ok=True)
+    (reg / "saves" / "npc_registry.json").write_text("{ not json", encoding="utf-8")
+    _, out_reg = run_script(["-c",
+        "import sys,json;sys.path.insert(0,%r);sys.exit(0)" % str(SCRIPTS_DIR)])
+    # driven directly: load through commit_state's own guard
+    import importlib
+    cs3 = importlib.import_module("commit_state")
+    orig_reg = cs3.NPC_REGISTRY_PATH
+    cs3.NPC_REGISTRY_PATH = reg / "saves" / "npc_registry.json"
+    try:
+        try:
+            cs3.update_npc_registry({"npc_relationships": [
+                {"npc_id": "n", "name": "N", "is_new_npc": True}]})
+            fo.append(("registry", False, "did NOT refuse a corrupt registry"))
+        except SystemExit:
+            still = (reg / "saves" / "npc_registry.json").read_text(encoding="utf-8")
+            fo.append(("registry", still.startswith("{ not json"),
+                       "refused and left the file untouched"))
+    finally:
+        cs3.NPC_REGISTRY_PATH = orig_reg
+
+    # An unreadable locations.json must announce the skipped check.
+    loc = json.loads(json.dumps(base))
+    loc["current_location"] = "A-Place-That-Does-Not-Exist"
+    locdir = tmp_dir / "locprobe" / "saves"
+    locdir.mkdir(parents=True, exist_ok=True)
+    (locdir / "locations.json").write_text("{ not json", encoding="utf-8")
+    (locdir / "current.json").write_text(json.dumps(loc), encoding="utf-8")
+    _, out_loc = run_script(["scripts/validate_state.py", str(locdir / "current.json")])
+    fo.append(("locations", "NOT checked against known locations" in out_loc,
+               "announced the skipped location check"))
+
+    # Empty input must not read as a verified pass.
+    code_e, out_e = run_script(["scripts/turn_gate.py"], input_text="")
+    code_g, out_g = run_script(["scripts/turn_gate.py"],
+                               input_text="He says nothing and goes to bed.")
+    fo.append(("turn_gate", code_e != 0 and code_g == 0,
+               "empty input fails, a real no-change turn still passes"))
+
+    for name, ok, note in fo:
+        results.append((f"fail-open guard: {name} -- {note}", ok, note))
+
     # prune_advisor.py must run without crashing and must print the
     #    "confirm or override" caveat -- we do NOT assert its ranking
     #    quality here, since it's a known-naive heuristic; this only

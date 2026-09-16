@@ -180,8 +180,25 @@ def update_npc_registry(new_state):
     if NPC_REGISTRY_PATH.exists():
         try:
             registry = load_json(NPC_REGISTRY_PATH)
-        except (json.JSONDecodeError, OSError, RecursionError):
-            registry = {}
+        except (json.JSONDecodeError, OSError, RecursionError) as e:
+            # ABORT rather than fall back to {}. This function writes the
+            # registry back, so treating an unreadable file as empty
+            # silently TRUNCATES the permanent record: a corrupt registry
+            # holding maren/ket/osgood plus one new introduction was
+            # rewritten as {"newcomer": ...}, three names gone, and the
+            # commit reported "Commit complete." with no warning.
+            #
+            # This is the file snapshot_pruned_npcs() exists to protect --
+            # the uncapped record behind the capped working set. Losing it
+            # to a parse error is the worst outcome available here, and it
+            # was reachable in one step. A commit refused loudly is
+            # recoverable; a registry silently emptied is not.
+            print(f"FAIL: {NPC_REGISTRY_PATH} exists but could not be read "
+                  f"({e}). Refusing to continue: this commit would rewrite "
+                  f"the registry and erase every name in it. Restore the "
+                  f"file from git history (see docs/RECOVERY.md) before "
+                  f"committing.")
+            sys.exit(1)
 
     changed = False
     for npc in new_state.get("npc_relationships", []):
@@ -234,8 +251,25 @@ def snapshot_pruned_npcs(old_state, new_state):
     if NPC_REGISTRY_PATH.exists():
         try:
             registry = load_json(NPC_REGISTRY_PATH)
-        except (json.JSONDecodeError, OSError, RecursionError):
-            registry = {}
+        except (json.JSONDecodeError, OSError, RecursionError) as e:
+            # ABORT rather than fall back to {}. This function writes the
+            # registry back, so treating an unreadable file as empty
+            # silently TRUNCATES the permanent record: a corrupt registry
+            # holding maren/ket/osgood plus one new introduction was
+            # rewritten as {"newcomer": ...}, three names gone, and the
+            # commit reported "Commit complete." with no warning.
+            #
+            # This is the file snapshot_pruned_npcs() exists to protect --
+            # the uncapped record behind the capped working set. Losing it
+            # to a parse error is the worst outcome available here, and it
+            # was reachable in one step. A commit refused loudly is
+            # recoverable; a registry silently emptied is not.
+            print(f"FAIL: {NPC_REGISTRY_PATH} exists but could not be read "
+                  f"({e}). Refusing to continue: this commit would rewrite "
+                  f"the registry and erase every name in it. Restore the "
+                  f"file from git history (see docs/RECOVERY.md) before "
+                  f"committing.")
+            sys.exit(1)
 
     # Keyed on the normalized id so an NPC whose id changes case between
     # turns isn't read as one person leaving and another arriving -- that
@@ -652,8 +686,13 @@ def run_lore_check(critique_text):
         )
         if result.stdout.strip():
             print(result.stdout, end="")
-    except OSError:
-        pass
+    except OSError as e:
+        # Still non-fatal -- an advisory must never block a commit -- but no
+        # longer silent. Printing nothing is indistinguishable from printing
+        # nothing because there was nothing to report, which is how an
+        # advisory dies without anyone noticing.
+        print(f"NOTE: the lore consistency pass could not run ({e}); this "
+              f"turn's narration was NOT checked against known lore.")
     finally:
         tmp_path.unlink(missing_ok=True)
 

@@ -664,8 +664,20 @@ def manual_checks(state, registry_path=None, locations_path=None):
     if locations_path.exists():
         try:
             locations_data = load_json(locations_path)
-        except (json.JSONDecodeError, OSError, RecursionError):
+        except (json.JSONDecodeError, OSError, RecursionError) as e:
+            # Announce it. Silently setting this to None skips the whole
+            # current_location / travel-destination block below, which turned
+            # a real FAIL into a PASS: an invented location validated clean
+            # the moment locations.json stopped parsing, with nothing said.
+            # This file already has the right convention for a degraded check
+            # -- it names a missing jsonschema rather than letting its absence
+            # look like a clean result -- it just was not applied here.
             locations_data = None
+            warnings.append(
+                f"{locations_path.name} could not be read ({e}), so "
+                f"current_location and any travel destination were NOT "
+                f"checked against known locations this run. That is a skipped "
+                f"check, not a passed one.")
 
     if locations_data is not None:
         known_locations = locations_data.get("locations", {})
