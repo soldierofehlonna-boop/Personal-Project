@@ -702,6 +702,57 @@ def pass2_adversarial(tmp_dir):
     for name, ok, note in fo:
         results.append((f"fail-open guard: {name} -- {note}", ok, note))
 
+    # The budget check must be driven by the WEEKLY window, not whichever
+    # window happens to be on record. rate_limit_info reports one window at
+    # a time, so a clear five_hour reading says nothing about the weekly
+    # position -- and it was enough to green-light an 18-session run. Also
+    # pinned: when both windows warn, the longer horizon is the one named
+    # binding, because "clears in two hours" and "clears in four days" were
+    # previously the same word.
+    wk_ok = False
+    wk_out = ""
+    try:
+        import importlib, time as _t
+        scg2 = importlib.import_module("session_cost_guide")
+        orig = scg2.HISTORY_FILE
+        probe = tmp_dir / "wk_history.json"
+        scg2.HISTORY_FILE = probe
+        now = int(_t.time())
+
+        def write(d):
+            probe.write_text(json.dumps(d), encoding="utf-8")
+
+        try:
+            write({"five_hour": {"status": "allowed", "window": "five_hour",
+                                 "resets_at": now + 3600, "recorded_at": now}})
+            _, short_only = scg2.budget()
+
+            write({"five_hour": {"status": "allowed_warning", "window": "five_hour",
+                                 "resets_at": now + 7200, "recorded_at": now},
+                   "seven_day": {"status": "allowed_warning", "window": "seven_day",
+                                 "resets_at": now + 4 * 86400, "recorded_at": now}})
+            rows_both, worst_both = scg2.budget()
+
+            write({"five_hour": {"status": "allowed", "window": "five_hour",
+                                 "resets_at": now + 3600, "recorded_at": now},
+                   "seven_day": {"status": "allowed", "window": "seven_day",
+                                 "resets_at": now + 7 * 86400, "recorded_at": now}})
+            _, both_clear = scg2.budget()
+        finally:
+            scg2.HISTORY_FILE = orig
+
+        wk_ok = (short_only == "unknown-long"          # short clearance is not clearance
+                 and worst_both == "allowed_warning"
+                 and rows_both[0][0] == "seven_day"    # longest horizon listed first
+                 and both_clear == "allowed"
+                 and scg2.is_long_window("seven_day", {})
+                 and not scg2.is_long_window("five_hour", {}))
+        wk_out = f"short_only={short_only!r} both={worst_both!r} first={rows_both[0][0]}"
+    except Exception as e:                       # noqa: BLE001
+        wk_out = f"raised {e!r}"
+    results.append(("session_cost_guide.py will not treat a clear SHORT window as "
+                    "clearance, and lets the weekly window bind", wk_ok, wk_out))
+
     # prune_advisor.py must run without crashing and must print the
     #    "confirm or override" caveat -- we do NOT assert its ranking
     #    quality here, since it's a known-naive heuristic; this only

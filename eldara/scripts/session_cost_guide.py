@@ -134,6 +134,41 @@ def fmt(secs):
             f"(~{sum(secs)/60:.0f} min total)")
 
 
+def window_horizon(window, rec):
+    """Roughly how long this window's constraint lasts, in seconds.
+
+    Used to rank windows by how much a warning on them actually costs. A
+    warning you wait out over lunch and one that blocks the rest of the
+    week are the same STATUS and completely different decisions, so status
+    alone must not drive the verdict. Read from the name where it is
+    recognisable, else inferred from the recorded reset distance.
+    """
+    name = str(window or "").lower()
+    if "week" in name or "seven_day" in name or "7_day" in name:
+        return 7 * 86400
+    if "day" in name:
+        return 86400
+    if "hour" in name:
+        for tok in name.replace("_", " ").split():
+            if tok.isdigit():
+                return int(tok) * 3600
+        return 3600
+    resets, rec_at = rec.get("resets_at"), rec.get("recorded_at")
+    if resets and rec_at:
+        return max(int(resets) - int(rec_at), 0)
+    return 0
+
+
+def is_long_window(window, rec):
+    """A window whose constraint outlasts a working session.
+
+    The distinction that matters: a short window can be waited out today,
+    a long one cannot, so only a long window's clearance is real clearance
+    for an expensive run.
+    """
+    return window_horizon(window, rec) >= 86400
+
+
 def budget():
     """Every window ever observed, each with the age of its observation.
 
@@ -159,8 +194,14 @@ def budget():
 
     now = int(time.time())
     rank = {"allowed": 0, "allowed_warning": 1}
-    rows, worst, worst_n = [], "unknown", -1
-    for window, rec in sorted(hist.items()):
+    rows, worst, worst_n, worst_h = [], "unknown", -1, -1
+    long_seen = False
+    # Longest horizon first. Ordering used to be alphabetical, which put
+    # five_hour above seven_day and buried the window that actually decides
+    # whether an expensive run can happen this week.
+    ordered = sorted(hist.items(),
+                     key=lambda kv: -window_horizon(kv[0], kv[1]))
+    for window, rec in ordered:
         age = now - int(rec.get("recorded_at") or 0)
         resets = rec.get("resets_at")
         if resets and int(resets) > now:
@@ -175,11 +216,29 @@ def budget():
             live = False
         status = str(rec.get("status") or "?")
         rows.append((window, status, when, age, live))
+        h = window_horizon(window, rec)
+        if live and is_long_window(window, rec):
+            long_seen = True
         n = rank.get(status, 2)
-        if live and n > worst_n:
-            worst, worst_n = status, n
-    # Every observation stale or expired -> still unknown, not clear.
-    return rows, (worst if worst_n >= 0 else "unknown")
+        # Worse status wins; on a TIE the longer horizon wins, because
+        # "warning, clears in two hours" and "warning, clears in four days"
+        # were previously indistinguishable and the alphabet decided which
+        # got reported as binding.
+        if live and (n > worst_n or (n == worst_n and h > worst_h)):
+            worst, worst_n, worst_h = status, n, h
+
+    if worst_n < 0:
+        return rows, "unknown"
+    # A clear short window is NOT clearance. rate_limit_info reports only the
+    # window currently binding, so a five_hour "allowed" observation says
+    # nothing whatever about the weekly position -- and the weekly one is what
+    # blocks a run for days. Observed directly today: the five-hour window
+    # reset at midday and the seven-day window turned out to be binding, four
+    # days out. Without this, one five_hour:allowed reading green-lit an
+    # 18-session chain.
+    if worst == "allowed" and not long_seen:
+        return rows, "unknown-long"
+    return rows, worst
 
 
 def load_issues(path=None):
@@ -255,7 +314,7 @@ def rank_fixes(path, rows, worst, tier_draw):
             print("  candidates to docs/open_issues.json first.")
             return []
 
-    blocked = worst != "allowed"   # unknown blocks, same as a warning
+    blocked = worst != "allowed"   # unknown and unknown-long block too
     print(f"\n{'':2}{'CANDIDATE':<34} {'TIER':>4} {'EFFECT':>7} {'DRAW':>6}  VERDICT")
     print("  " + "-" * 84)
 
@@ -286,7 +345,8 @@ def rank_fixes(path, rows, worst, tier_draw):
         score, permitted, tier, eff, c, draw = row
         verdict = ("" if permitted else
                    ("BLOCKED: budget unknown" if worst == "unknown"
-                    else "BLOCKED by budget"))
+                    else "BLOCKED: weekly window unobserved"
+                    if worst == "unknown-long" else "BLOCKED by budget"))
         if top is not None and row is top:
             verdict = "<= RECOMMENDED"
         draw_s = ("none" if draw == 0 else f"{draw:.0f}/run")
@@ -295,7 +355,11 @@ def rank_fixes(path, rows, worst, tier_draw):
             print(f"    why: {c['why']}")
     print("\n  EFFECT is judged, not measured -- it is the author's estimate of how")
     print("  much of the issue the fix actually removes. TIER and DRAW are measured.")
-    if worst == "unknown":
+    if worst == "unknown-long":
+        print("  Tier 3+ candidates are excluded: only a SHORT window has been")
+        print("  observed. A clear five-hour window says nothing about the weekly")
+        print("  one, and the weekly one is what blocks a run for days.")
+    elif worst == "unknown":
         print("  Tier 3+ candidates are excluded: NO usable budget observation.")
         print("  Record one before ranking an expensive run -- get_session ->")
         print("  external_metadata.rate_limit_info, then tier34_guard.py --record.")
@@ -345,10 +409,28 @@ def main():
         mark = "  " if live else "! "
         print(f"  {mark}{window:<12} {status:<16} {when:<44} "
               f"(observed {age // 60} min ago)")
-    if worst and worst != "allowed":
-        print(f"\n  BINDING: {worst!r} -- tier 3 and 4 are OFF. Do tier 0-2 work.")
-    elif worst:
-        print("\n  All observed windows allowed.")
+    # Name the window and the wait, not just the status. "allowed_warning"
+    # alone was printed for both a two-hour hold and a four-day one -- the
+    # same words for the two decisions furthest apart in consequence.
+    if worst == "unknown-long":
+        print("\n  BINDING: the weekly window has NOT been observed. Only a short")
+        print("  window is on record, and a clear short window is not clearance --")
+        print("  rate_limit_info reports one window at a time. Tier 3 and 4 are OFF")
+        print("  until a day-or-longer window is recorded.")
+    elif worst == "unknown":
+        print("\n  BINDING: no usable observation at all. Tier 3 and 4 are OFF.")
+    elif worst != "allowed":
+        binding = next(((w, when) for w, s, when, _a, live in rows
+                        if live and s == worst), None)
+        where = f" on {binding[0]} ({binding[1]})" if binding else ""
+        print(f"\n  BINDING: {worst!r}{where} -- tier 3 and 4 are OFF. "
+              f"Do tier 0-2 work.")
+        if binding and binding[0] and "day" in binding[0].lower():
+            print("  This is the WEEKLY window: it cannot be waited out inside a")
+            print("  session. Plan the expensive run for after that reset.")
+    else:
+        longest = rows[0][0] if rows else "?"
+        print(f"\n  All observed windows allowed, longest observed: {longest}.")
     print("  No remaining-percentage or token budget is exposed to a session;")
     print("  none is estimated here.")
 

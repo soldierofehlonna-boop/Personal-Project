@@ -62,6 +62,14 @@ So report `status`, `rateLimitType` and `resetsAt` together. "Warning,
 resets in four hours" and "warning, resets in four days" are the same
 status and completely different decisions.
 
+**A clear SHORT window is not clearance.** Because only one window is
+reported at a time, a `five_hour: allowed` reading says nothing about the
+weekly position — and the weekly one is what blocks a run for days.
+`session_cost_guide.py` refuses to treat a short-window-only observation
+as permission for tier 3 or 4, and where two windows tie on status it
+names the longer-horizon one as binding. Before an expensive run, make
+sure a day-or-longer window has actually been observed.
+
 What is still true: there is no remaining-percentage or token-budget
 number anywhere reachable, and nothing on disk carries live rate-limit
 state (`~/.claude.json` has only feature flags). Do not invent a
