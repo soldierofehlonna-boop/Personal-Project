@@ -488,6 +488,34 @@ def pass2_adversarial(tmp_dir):
                     "open_threads, and leaves a merely dormant one alone",
                     retained_caught and dormant_quiet, out_k + out_d))
 
+    # A sum in a thread's text is only that thread's price if the thread is
+    # about owing or paying it. Swept against all 55 committed states from
+    # the blind runs, the bare-sum test flagged money Chad merely HELD
+    # ("...before it shuts at dark, with 6 copper and no one inside who
+    # knows him") alongside real debts. Both sides pinned: an obligation
+    # with an unrecorded sum warns, and a non-obligation that happens to
+    # name coins does not.
+    owed = json.loads(json.dumps(base))
+    owed["open_threads"] = [{"text": "Owes Maren 14 copper on the room tab",
+                             "added_turn": 1, "active": True}]
+    owed_path = tmp_dir / "obligation_unpriced.json"
+    owed_path.write_text(json.dumps(owed), encoding="utf-8")
+    _, out_ow = run_script(["scripts/validate_state.py", str(owed_path)])
+    obligation_flagged = "names a price" in out_ow
+
+    holds = json.loads(json.dumps(base))
+    holds["open_threads"] = [{"text": "Get inside the gate before dark with 6 copper "
+                                      "and no one inside who knows him",
+                              "added_turn": 1, "active": True}]
+    holds_path = tmp_dir / "mere_coins.json"
+    holds_path.write_text(json.dumps(holds), encoding="utf-8")
+    _, out_h = run_script(["scripts/validate_state.py", str(holds_path)])
+    non_obligation_quiet = "names a price" not in out_h
+
+    results.append(("validate_state.py asks for an amount on an obligation, but "
+                    "not on a thread that merely mentions coins",
+                    obligation_flagged and non_obligation_quiet, out_ow + out_h))
+
     # prune_advisor.py must run without crashing and must print the
     #    "confirm or override" caveat -- we do NOT assert its ranking
     #    quality here, since it's a known-naive heuristic; this only

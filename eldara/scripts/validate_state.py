@@ -207,6 +207,21 @@ DENOMINATIONS = ("copper", "silver", "gold", "platinum")
 # `paid off|in full|it|her`, never bare "paid"), and "Maren's standing
 # offer ... for 4 copper" is open-but-not-urgent with active=false, which
 # is what that flag legitimately means.
+# A sum in a thread's text is only that thread's PRICE if the thread is
+# about owing or paying it. Sweeping all 55 committed states from this
+# session's blind runs found the bare-sum test too loose: "Needs to get
+# inside Hollow Creek's gate before it shuts at dark, with 6 copper and
+# no one inside who knows him" states a sum, but it is money Chad HOLDS,
+# not an obligation -- and a horse priced in a market rumour, or an offer
+# never accepted, are information rather than debts. The original
+# calibration asked only whether a price could be found, never whether it
+# was this thread's price, which is why 26 texts looked clean and 10 did
+# not. An advisory that cries wolf gets switched off, so it asks for an
+# obligation word too.
+OBLIGATION_PROSE = re.compile(
+    r"\b(owes?|owed|owing|due|debt|tab|pay|paid|payment|fee|rent|"
+    r"settle[sd]?|charge[sd]?|price)\b", re.I)
+
 RESOLVED_PROSE = re.compile(
     r"\b(settled|closed by|paid (?:off|in full|it|her)|resolved|discharged|"
     r"no longer owed|fully paid)\b", re.I)
@@ -518,7 +533,9 @@ def manual_checks(state, registry_path=None, locations_path=None):
         # one cannot quietly disagree -- same shape as the deadline units
         # check above. Without this, `amount` is just another field the
         # prose can contradict.
-        stated = prices_in_text(thread.get("text"))
+        thread_text = str(thread.get("text") or "")
+        stated = (prices_in_text(thread_text)
+                  if OBLIGATION_PROSE.search(thread_text) else {})
         if stated:
             if isinstance(amount, dict):
                 for denom, values in stated.items():
