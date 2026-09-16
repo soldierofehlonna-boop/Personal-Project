@@ -191,6 +191,56 @@ def find_registered_npc_id(registry, npc_id):
     return None
 
 
+DENOMINATIONS = ("copper", "silver", "gold", "platinum")
+
+# Numbers written out in prose. Kept small and common on purpose: the
+# point is to catch a price the narration plainly stated, not to parse
+# arbitrary English.
+WORD_NUMBERS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+    "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
+    "twelve": 12, "twenty": 20, "thirty": 30,
+}
+
+
+def prices_in_text(text):
+    """Sums named in a thread's text, as {denomination: total}.
+
+    Returns {denomination: {values seen}} -- a SET per denomination, not a
+    sum. An earlier version added repeated figures together and promptly
+    misread this project's own fixture: "2 copper a night, 14 copper for
+    the week" is a rate and a total, and summing them produced 16, a
+    number the text never states. Prose routinely names the same
+    denomination more than once for different purposes, so any single
+    figure it states is a legitimate reading and the caller checks for
+    membership rather than equality. Different denominations in one
+    phrase ("two silver and 6 copper") stay separate, which is what makes
+    that case still work.
+
+    Matches "22 copper", "two silver", "five copper a night". Deliberately
+    literal -- it is looking for a price the prose actually stated, not
+    trying to understand the sentence. Anything it cannot read confidently
+    it does not report, because this drives a warning a human has to
+    triage and a noisy version would be turned off.
+    """
+    import re as _re
+    found = {}
+    if not isinstance(text, str):
+        return found
+    for m in _re.finditer(
+            r"\b(\d{1,4}|" + "|".join(WORD_NUMBERS) + r")\s+(" +
+            "|".join(DENOMINATIONS) + r")\b", text, _re.I):
+        raw, denom = m.group(1).lower(), m.group(2).lower()
+        n = WORD_NUMBERS.get(raw)
+        if n is None:
+            try:
+                n = int(raw)
+            except ValueError:
+                continue
+        found.setdefault(denom, set()).add(n)
+    return found
+
+
 def companion_paths(state_path):
     """Where to look for the campaign data files that sit ALONGSIDE a save.
 
@@ -401,6 +451,52 @@ def manual_checks(state, registry_path=None, locations_path=None):
             errors.append(
                 f"open_thread '{thread.get('text', '')[:40]}...' has deadline_turn <= added_turn"
             )
+        # An obligation's amount, where the fiction named one.
+        amount = thread.get("amount")
+        if amount is not None:
+            if not isinstance(amount, dict):
+                errors.append(
+                    f"open_thread '{thread.get('text', '')[:40]}...' has an "
+                    f"amount that is not an object ({type(amount).__name__})"
+                )
+            else:
+                for denom, val in amount.items():
+                    if denom not in DENOMINATIONS:
+                        errors.append(
+                            f"open_thread '{thread.get('text', '')[:40]}...' "
+                            f"amount has unknown denomination '{denom}'"
+                        )
+                    elif not isinstance(val, int) or isinstance(val, bool) or val < 0:
+                        errors.append(
+                            f"open_thread '{thread.get('text', '')[:40]}...' "
+                            f"amount.{denom}={val!r} must be a non-negative integer"
+                        )
+
+        # The field only earns its place if a stated price and a recorded
+        # one cannot quietly disagree -- same shape as the deadline units
+        # check above. Without this, `amount` is just another field the
+        # prose can contradict.
+        stated = prices_in_text(thread.get("text"))
+        if stated:
+            if isinstance(amount, dict):
+                for denom, values in stated.items():
+                    if denom in amount and amount[denom] not in values:
+                        warnings.append(
+                            f"open_thread '{thread.get('text', '')[:40]}...' text "
+                            f"names {sorted(values)} {denom} but "
+                            f"amount.{denom}={amount[denom]}, which the text never "
+                            f"states -- the prose and the record disagree"
+                        )
+            elif amount is None:
+                warnings.append(
+                    f"open_thread '{thread.get('text', '')[:40]}...' names a price "
+                    f"in its text ({ {k: sorted(v) for k, v in stated.items()} }) "
+                    f"but records no `amount`. A sum that "
+                    f"lives only in prose is one a later turn can silently "
+                    f"reinvent -- five blind runs settled the same unpriced debt "
+                    f"at 10/4/6/0/34 copper-equivalent."
+                )
+
         # deadline_date is checked FIRST and wins where both are present.
         # A turn count is the wrong unit for an obligation the fiction dates
         # in days: turns and days advance at rates measured between 0.00 and

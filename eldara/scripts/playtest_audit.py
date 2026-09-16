@@ -378,6 +378,32 @@ def pass2_adversarial(tmp_dir):
                     "still falls back for an orphan proposal",
                     sibling_used and fallback_held, out_o + out_p))
 
+    # A price stated in a thread's prose and the recorded amount must not
+    # be able to disagree -- otherwise `amount` is just another field the
+    # narration can contradict. The rate-and-total case is checked too,
+    # because the first version of the extractor summed repeated
+    # denominations and misread this project's own fixture.
+    money = json.loads(json.dumps(base))
+    money["open_threads"] = [{"text": "Owes Maren 22 copper", "added_turn": 1,
+                              "active": True, "amount": {"copper": 14}}]
+    money_path = tmp_dir / "price_disagrees.json"
+    money_path.write_text(json.dumps(money), encoding="utf-8")
+    _, out_m = run_script(["scripts/validate_state.py", str(money_path)])
+    disagree_caught = "disagree" in out_m.lower()
+
+    rate = json.loads(json.dumps(base))
+    rate["open_threads"] = [{"text": "2 copper a night, 14 copper for the week",
+                             "added_turn": 1, "active": True,
+                             "amount": {"copper": 14}}]
+    rate_path = tmp_dir / "price_rate_and_total.json"
+    rate_path.write_text(json.dumps(rate), encoding="utf-8")
+    _, out_r = run_script(["scripts/validate_state.py", str(rate_path)])
+    rate_quiet = "disagree" not in out_r.lower()
+
+    results.append(("validate_state.py catches a thread whose stated price and "
+                    "recorded amount disagree", disagree_caught and rate_quiet,
+                    out_m + out_r))
+
     # prune_advisor.py must run without crashing and must print the
     #    "confirm or override" caveat -- we do NOT assert its ranking
     #    quality here, since it's a known-naive heuristic; this only

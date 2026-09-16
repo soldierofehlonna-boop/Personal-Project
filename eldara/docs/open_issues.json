@@ -45,7 +45,7 @@
     },
     {
       "id": "unpriced-obligation",
-      "status": "open",
+      "status": "fixed",
       "owner": "agent",
       "summary": "An open_thread can state a debt with no amount, so the GM invents the price and nothing can check it. Closed-inventory is a blocking gate; prices are wide open.",
       "evidence": "Five stress copies, identical seeded start (14c 2s = 34 copper-equiv) and identical prompt, ended at 10 / 4 / 6 / 0 / 34 copper-equiv -- a 34-copper spread on the same scene, one GM paying the entire purse and another paying nothing. The seeded thread reads 'Maren wants payment for the room by the week's end' and no amount appears anywhere in the state; only one of five ever stated a nightly rate.",
@@ -72,7 +72,8 @@
           "churn": 0,
           "why": "Advisory only and keyword-based, so it will misfire on threads that are not debts. Weaker than making the field exist."
         }
-      ]
+      ],
+      "fixed_by": "open_threads.amount (currency-shaped, optional) + a prose/record price-divergence warning, and the seeding fixture's debt priced at 14 copper. The third candidate (keyword 'debt-shaped' warning) was not taken: the divergence check covers the same ground without misfiring, since it only fires on threads that demonstrably name a sum."
     },
     {
       "id": "validator-registry-path",

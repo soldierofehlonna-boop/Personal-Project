@@ -149,14 +149,31 @@ def build_turns(base_state):
         "status has been non-empty at some point (a physical cost landed)",
     ))
 
-    # Turn 5: open_thread with deadline_turn appears in journal history
+    # Turn 5: open_thread with a deadline appears in journal history.
+    #
+    # The sum and the date are both stated explicitly. They used not to be,
+    # and blind testing showed what that cost: five runs given this exact
+    # fixture and the same "settle up with Maren" prompt ended at 10, 4, 6,
+    # 0 and 34 copper-equivalent from an identical 34-copper purse -- one
+    # paying everything, one paying nothing -- because the price existed
+    # only in whatever prose each run happened to invent. A fixture that
+    # states an obligation without its terms is not a neutral starting
+    # position; it is a blank the GM must fill in differently every time,
+    # which makes every downstream economic comparison meaningless.
+    #
+    # deadline_date carries the date because turns are not days (see
+    # state_schema.json). deadline_turn is kept alongside it so the fixture
+    # still exercises the older field that existing saves rely on.
     state["turn"] = 5
     state["open_threads"] = [
         {
-            "text": "Maren wants payment for the room by the week's end",
+            "text": "Maren wants payment for the room -- 2 copper a night, "
+                    "14 copper for the week, by the week's end",
             "added_turn": 5,
             "active": True,
             "deadline_turn": 12,
+            "deadline_date": {"day": 13, "month": "Seedmonth", "year": 1},
+            "amount": {"copper": 14},
         }
     ]
     turns.append((

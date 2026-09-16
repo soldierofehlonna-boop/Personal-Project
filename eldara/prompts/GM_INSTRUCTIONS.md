@@ -205,10 +205,20 @@ ever an approximation of a date, and it drifts as turns accumulate:
 
 ```json
 "open_threads": [
-  {"text": "Pay the example innkeeper for the room by the sixteenth", "added_turn": 4,
-   "active": true, "deadline_date": {"day": 16, "month": "Seedmonth", "year": 1}}
+  {"text": "Pay the example innkeeper for the room -- 14 copper, by the sixteenth",
+   "added_turn": 4, "active": true,
+   "deadline_date": {"day": 16, "month": "Seedmonth", "year": 1},
+   "amount": {"copper": 14}}
 ]
 ```
+
+`amount` records what the obligation costs, when the scene named a sum.
+Record it only if the price was actually stated — an unpriced debt must
+stay unpriced rather than acquire an invented figure here. What it
+prevents is the number moving afterwards: five blind runs settled the
+same unpriced debt at 10, 4, 6, 0 and 34 copper from an identical purse.
+`validate_state.py` warns if the text names a price the `amount` does not
+match.
 
 `deadline_turn` remains correct for a window genuinely counted in turns
 rather than days, and must still be strictly greater than `added_turn` —

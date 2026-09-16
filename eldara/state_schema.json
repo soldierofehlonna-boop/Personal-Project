@@ -223,6 +223,28 @@
               "month",
               "year"
             ]
+          },
+          "amount": {
+            "type": "object",
+            "description": "What this obligation actually costs, when the fiction named a sum. Same denominations as the top-level currency object so the two can be compared directly. Optional: many threads are not debts, and a debt whose price was never stated on-screen must NOT be given an invented one here -- leave it absent and let the scene settle it. What this prevents is the number drifting once it HAS been said. Five blind runs from an identical seeded purse (14 copper, 2 silver) and an identical prompt settled the same unpriced room debt at 10, 4, 6, 0 and 34 copper-equivalent -- one paying the whole purse, one paying nothing -- because the amount existed only in whatever prose each run invented. This is to a debt what acquired_event is to a piece of gear.",
+            "properties": {
+              "copper": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "silver": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "gold": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "platinum": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
           }
         }
       },
